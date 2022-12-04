@@ -1722,7 +1722,7 @@ cont_table_filter2 <- data.frame( contaminant = c("TRUE","FALSE"),
 # we end with cont_table_filter2 
 ```
 CP:
-```{r remove filter1 and filter2 species from TRUE samples}
+```{r }
 # we plan to put everything together:
 # take a look at sheet from {24.11.22}
 p.comb.filt.s.prev #phyloseq_obj created thru merge of p.true.filt.s.prev & physeq.filt.nct.s.perfect
@@ -1735,26 +1735,61 @@ p.true.filt.s.prev #phyloseq_obj containing true_samples
 p.true.postf1_alt <- prune_taxa(taxa = taxa_to_keep, x = p.true.filt.s.prev) #remove contaminants from filter1
 p.true.prev.postf1f2_alt <- prune_taxa(taxa = taxa_kept2$OTU, x = p.true.postf1_alt) #remove contaminants from filter2
 
-plot(y = sample_sums(p.true.filt.s.prev),x = seq(1,nsamples(p.true.filt.s.prev)), xlab = "Sample index", ylab= "Seq-depth") # we started with this seq-depth for true_samples 
+#plot seq-depth
+plot(y = sample_sums(p.true.filt.s),x = seq(1,nsamples(p.true.filt.s)), xlab = "Sample index", ylab= "Seq-depth", main= "true samples")
 
-plot(y = sample_sums(p.true.prev.postf1f2),x = seq(1,nsamples(p.true.prev.postf1f2)), xlab = "Sample index", ylab= "Seq-depth")  # we ended with this seq_depth for true_samples
+plot(y = sample_sums(p.true.filt.s.prev),x = seq(1,nsamples(p.true.filt.s.prev)), xlab = "Sample index", ylab= "Seq-depth", main= "true samples post PERFect") # we started with this seq-depth for true_samples 
 
-#odd
+plot(y = sample_sums(p.true.prev.postf1f2),x = seq(1,nsamples(p.true.prev.postf1f2)), xlab = "Sample index", ylab= "Seq-depth", main= "true samples post PERFect/Nejman")  # we ended with this seq_depth for true_samples
+#notice that the last 10 samples have a far larger seq-depth than the rest
 
-a <- which(otu_table(p.true.prev.postf1f2)[,58] != 0) #index of OTU != 0 for sample_no. 58
+plot(x=seq(1,nsamples(p.true.prev.postf1f2)),y = otu_table(p.true.prev.postf1f2)["358220",],xlab= "Sample index", ylab= "Count",main = paste("counts of OTU 358220 in true samples", "\nusing cleaned data 30.11.22")) #plot counts for specific OTU
+
 sort(p.true.prev.postf1f2@otu_table@.Data[a,58],decreasing = TRUE)
-plot(x = seq(1:length(a)),y = p.true.prev.postf1f2@otu_table@.Data[a,58])
-plot(x = seq(1:length(a)),y = p.true.prev.postf1f2@otu_table@.Data[a,57])
+otu_table(p.true.prev.postf1f2)[c("358220","702113"),] # get counts of the two most highly prevelent OTUs in sample 58
+tax_table(p.true.prev.postf1f2)[c("358220","702113"),] # get tax_information for these two OTUs - they are contaminants
 
+a <- which(otu_table(p.true.prev.postf1f2)[,58] != 0) #index of OTU with count > 0 in sample_no. 58
+plot(x = seq(1:length(a)),y = p.true.prev.postf1f2@otu_table@.Data[a,58]) #counts of OTU that are not 0 in sample58 for sample58
+plot(x = seq(1:length(a)),y = p.true.prev.postf1f2@otu_table@.Data[a,57]) #counts of OTU that are not 0 in sample58 for sample57
+plot(x = seq(1:length(a)),y = p.true.prev.postf1f2@otu_table@.Data[a,10]) #counts of OTU that are not 0 in sample58 for sample10
+plot(x = seq(1:length(a)),y = p.true.prev.postf1f2@otu_table@.Data[a,20]) #counts of OTU that are not 0 in sample58 for sample20
+#most of the OTUs in "a" are not as expressed in the overall true samples as in the last 10 samples 
 
-plot(x = seq(1:length(a)),y = p.true.prev.postf1f2@otu_table@.Data[a,10])
-
-plot(x = seq(1:ntaxa(p.true.prev.postf1f2)),y = p.true.prev.postf1f2@otu_table@.Data[,58])
-
-plot(x = seq(1:ntaxa(p.true.prev.postf1f2)),y = p.true.prev.postf1f2@otu_table@.Data[,57])
-plot(x = seq(1:ntaxa(p.true.prev.postf1f2)),y = p.true.prev.postf1f2@otu_table@.Data[,56])
-plot(x = seq(1:ntaxa(p.true.prev.postf1f2)),y = p.true.prev.postf1f2@otu_table@.Data[,55])
 ```
+
+```{r generate tree of clean phyloseq}
+#create tree
+phy_tree = rtree(ntaxa(p.true.prev.postf1f2), rooted=TRUE, tip.label=taxa_names(p.true.prev.postf1f2))
+p.true.prev.postf1f2  <- merge_phyloseq(p.true.prev.postf1f2 , phy_tree)
+```
+
+```{r microbial composition of p.true.prev.postf1f2}
+physeq.fam <- transform_sample_counts(p.true.prev.postf1f2, function(x){x/sum(x)})
+df.fam.melt <- psmelt(physeq.fam ) 
+
+df.fam.melt$species.v2 <- ifelse(df.fam.melt$Abundance>.1,as.character(df.fam.melt$species), "others")
+df.fam.melt$species.v2 <- factor(df.fam.melt$species.v2, levels=rev(unique(df.fam.melt$species.v2)))
+cols <- c("#9d547c","#56ca63","#a357d6","#419d2a","#525fd6","#8cbe3a","#c944aa","#5ba557","#9e66cb","#c1b735","#6d82ec","#e69728","#6654b0","#799330","#da7fdf","#3c782c","#e44586","#63c996","#dc3f53","#49cbc8","#cf3f29","#4fabda","#da6c2b","#598bd1","#b78c24","#8d4191","#a0b971","#b2386a","#479d71","#ae4341","#2ba198","#e07557","#5361a3","#dda353","#aa98df","#5b6114","#dc89bf","#327243","#e57b94","#277257","#9b62a0","#bbab59","#98495a","#526229","#d8827d","#857624","#9a4a22","#7c7d46","#e3a073","#9e6b33", "lawngreen", "orchid2", "olivedrab1", "ivory3", "darkseagreen", "bisque2", "darkgoldenrod2", "blue2", "skyblue", "seashell2", "turquoise", "tan1", "seagreen2", "palevioletred3", "linen", "steelblue4", "limegreen", "purple3", "khaki3", "snow3", "darkslategray", "magenta2", "palegreen", "salmon", "maroon", "cyan2")
+
+
+ggplot(df.fam.melt, aes(x=id, y=Abundance, fill=species.v2)) +
+  geom_bar(stat="identity") +
+  scale_y_continuous(labels = scales::percent, expand = c(0, 0), limits = c(0, 1.02)) +
+  scale_fill_manual(values = cols) +
+  xlab ("") +
+  ylab("Relative abundance") +
+  theme_bw() +
+  ggtitle("Microbial composition at species level")+
+  theme( axis.text.x = element_blank(),
+        axis.text.y = element_text (size=12),
+        axis.title = element_text(size=14, face="bold"))+
+  theme(legend.position = "bottom",
+        legend.title = element_blank(),
+        legend.background = element_rect(size=0.25, linetype="solid", colour ="black"),
+        legend.key.size = unit(4,"mm"))
+```
+
 
 ```{r change order: first abundance, then prevalance}
 #load data
@@ -1994,12 +2029,132 @@ ids.sim<- colnames(res_sim$filtX)
 p.true.postf1f2.perfect <-  prune_taxa(ids.sim, p.true.postf1f2)
 ```
 
+```{r microbial composition of p.true.postf1f2.perfect}
+physeq.fam <- transform_sample_counts(p.true.postf1f2.perfect, function(x){x/sum(x)})
+df.fam.melt <- psmelt(physeq.fam ) 
+
+df.fam.melt$species.v2 <- ifelse(df.fam.melt$Abundance>.1,as.character(df.fam.melt$species), "others")
+df.fam.melt$species.v2 <- factor(df.fam.melt$species.v2, levels=rev(unique(df.fam.melt$species.v2)))
+cols <- c("#9d547c","#56ca63","#a357d6","#419d2a","#525fd6","#8cbe3a","#c944aa","#5ba557","#9e66cb","#c1b735","#6d82ec","#e69728","#6654b0","#799330","#da7fdf","#3c782c","#e44586","#63c996","#dc3f53","#49cbc8","#cf3f29","#4fabda","#da6c2b","#598bd1","#b78c24","#8d4191","#a0b971","#b2386a","#479d71","#ae4341","#2ba198","#e07557","#5361a3","#dda353","#aa98df","#5b6114","#dc89bf","#327243","#e57b94","#277257","#9b62a0","#bbab59","#98495a","#526229","#d8827d","#857624","#9a4a22","#7c7d46","#e3a073","#9e6b33", "lawngreen", "orchid2", "olivedrab1", "ivory3", "darkseagreen", "bisque2", "darkgoldenrod2", "blue2", "skyblue", "seashell2", "turquoise", "tan1", "seagreen2", "palevioletred3", "linen", "steelblue4", "limegreen", "purple3", "khaki3", "snow3", "darkslategray", "magenta2", "palegreen", "salmon", "maroon", "cyan2")
+
+
+ggplot(df.fam.melt, aes(x=id, y=Abundance, fill=species.v2)) +
+  geom_bar(stat="identity") +
+  scale_y_continuous(labels = scales::percent, expand = c(0, 0), limits = c(0, 1.02)) +
+  scale_fill_manual(values = cols) +
+  xlab ("") +
+  ylab("Relative abundance") +
+  theme_bw() +
+  ggtitle("Microbial composition at species level")+
+  theme( axis.text.x = element_blank(),
+        axis.text.y = element_text (size=12),
+        axis.title = element_text(size=14, face="bold"))+
+  theme(legend.position = "bottom",
+        legend.title = element_blank(),
+        legend.background = element_rect(size=0.25, linetype="solid", colour ="black"),
+        legend.key.size = unit(4,"mm"))
+```
 
 ```{r generate tree of clean phyloseq}
 #create tree
-phy_tree = rtree(ntaxa(p.filt.s.prev.f2), rooted=TRUE, tip.label=taxa_names(p.filt.s.prev.f2))
-p.filt.s.prev.f2  <- merge_phyloseq(p.filt.s.prev.f2 , phy_tree)
+phy_tree = rtree(ntaxa(p.true.postf1f2.perfect), rooted=TRUE, tip.label=taxa_names(p.true.postf1f2.perfect))
+p.true.postf1f2.perfect  <- merge_phyloseq(p.true.postf1f2.perfect , phy_tree)
 ```
+
+We recreate the workflow laid-out in our meeting {28.11.22}. See GWDG pad for topics & conclusions from this meeting
+
+```{r}
+#we do not perform PERFect on negative controls 
+#we take PERFect filtered TRUE_samples 
+
+# load metadata table
+library(readxl)
+df <- read_excel("raw_data/Metadata.xlsx", 
+    col_types = c("numeric", "text", "text", 
+        "text", "text", "text", "text", "text", 
+        "text", "numeric", "text", "numeric", 
+        "numeric", "text", "numeric"))
+df <- as.data.frame(df)
+# Metadata.xlsx contains data for TRUE samples and controls -> we have to merge true samples and negative controls (remember we remove ntc samples later based on read-count)
+physeq.nct <- merge_phyloseq(physeq.nct1, physeq.nct2, physeq.nct3, physeq.nct4, physeq.nct5, physeq.nct6, physeq.nct7, physeq.nct8, physeq.nct9, physeq.nct10, physeq.nct11) # all negative controls
+
+physeq.filt.nct <- subset_taxa(physeq.nct, superkingdom=="Bacteria") #filter for bacterial reads
+physeq.filt.nct.s <- tax_glom(physeq.filt.nct, taxrank = "species", NArm = TRUE) #agglomerate  to species level
+
+p.comb.filt.s.new <- merge_phyloseq(p.true.filt.s.prev,physeq.filt.nct.s) #merge TRUE samples with ALL ntc sample
+p.comb.filt.s.new <- tax_glom(physeq = p.comb.filt.s.new,taxrank = "species", NArm = TRUE) #agglomerate all taxa to species level 
+
+#the following approach (next to lines) does not seem to work. Try something new.
+sd.new <- meta(p.comb.filt.s.new) %>% left_join(df)
+rownames(sd.new) <- sd.new$id
+#we try
+left_join(meta(p.comb.filt.s.new), df, by = colnames(meta(p.comb.filt.s.new))[1:10])
+#this yields sub-optimal results: issues are different column names + different data types
+
+#new idea: take sample data from p.comb.filt.s.new and expand it manually...
+sd.new <- meta(p.comb.filt.s.new)
+sd.new$DNAex_round <- df$DNAex_round
+sd.new$PCR_round <- df$PCR_round
+rownames(sd.new) <- sd.new$id
+# sample 491.paraffin_tumor has 2 entries for DNAex_round {"4_5"}
+p.comb.filt.s.new <- merge_phyloseq(otu_table(p.comb.filt.s.new), tax_table(p.comb.filt.s.new), sample_data(sd.new))
+#as merging does not work, we can modifiy sample_data directly - even easier:
+sample_data(p.comb.filt.s.new)$DNAex_round <- df$DNAex_round
+sample_data(p.comb.filt.s.new)$PCR_round <- df$PCR_round
+# sample data updated 
+sample_data(physeq.nct)$sample_side <- ifelse(sample_data(physeq.nct)$sample_side == "paraffin", "paraffin_tumor", sample_data(physeq.nct)$sample_side) #modify sample side
+
+# remember to remove negative controls based on low read-count:
+# Plan: create subset containing nct samples / calculate sample_sums / define samples to be removed / remove these samples from bigger phyloseq-obj
+
+p.comb.new.nct <- subset_samples(p.comb.filt.s.new, TRUE_control == "control")
+#Q: we take nct from our merged & agglomerated obj NOT from raw nct data - is this an issue? A: No! tax_glom only changes taxonomy not counts
+bac.count.ntc <- tibble(bac.count = sample_sums(p.comb.new.nct), 
+                        sample = sample_data(p.comb.new.nct)$id) %>% 
+  arrange (bac.count)
+
+tibble(
+  ">250 reads" = length(which(bac.count.ntc$bac.count > 250)),
+  ">500 reads" = length(which(bac.count.ntc$bac.count > 500)),
+  ">750 reads" = length(which(bac.count.ntc$bac.count > 750)),
+  ">1000 reads" = length(which(bac.count.ntc$bac.count > 1000)),
+)  %>% 
+  kable (caption="NTC read counts", booktabs =TRUE) %>%
+  kable_classic(full_width = F, html_font = "Cambria") %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive")) 
+
+id.ex <- bac.count.ntc %>% filter(bac.count < 750) %>% pull (sample)
+
+p.comb.filt.s.new <- subset_samples(p.comb.filt.s.new, !(id %in% id.ex))
+
+#Something we should consider: our cut-off for nct samples is 750. However we also have 2 true_samples with values below 750 {443.normal & 438.tumor}
+sort(sample_sums(p.true.filt.s.prev),decreasing = FALSE) # sum of counts for true samples
+sort(sample_sums(p.comb.new.nct),decreasing = FALSE) # sum of counts for nct
+# most nct samples removed because of low read counts are buffer. t
+
+#Anyway
+# Filter 1
+
+# filter2??
+
+
+
+
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
 Analysis without normalization:
 First we need to subset our samples such that "TRUE_control" = TRUE only!
 ```{r alpha diversity}
