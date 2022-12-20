@@ -235,8 +235,10 @@ Any tax which has high prevalence (>= a threshold) in NCT samples is considered 
 First, we plot a graph to determine the cut-off of high prevalence. 
 ```{r}
 xout <- HighPrevalence_Data(p.true.RmLowAbun, physeq.nct.filt.s.prune)
-plot(xout$factorx, xout$rel_tax)
+plot(xout$factorx, xout$rel_tax, xlab="prevalence in NCT samples", ylab="proportion of tax in true samples")
 ```
+
+This plot shows us how many percents of taxa we would remove from true samples (y-axis) if we pick up a threshold for high prevalence in NCT samples (x-axis).
 From this plot, a threshold 0.3 would be fine.
 ```{r}
 filter <- 0.3
