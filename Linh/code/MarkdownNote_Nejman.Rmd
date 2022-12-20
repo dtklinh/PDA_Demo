@@ -1,0 +1,531 @@
+---
+title: "Patho FFPE human tumor vs. normal pancreas (AS1000Cov50, physeq_original)"
+author: "Nina & Christoph"
+date: "Report created: `r Sys.Date()`"
+output: 
+  html_document:
+    toc: true
+    toc_float: true
+    code_folding: hide
+editor_options: 
+  chunk_output_type: console
+---
+Adapter by Linh
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+```
+
+In this experiment, human tumor vs. normal pancreas FFPE tissue samples from the Pathology department are examined. The DNA had been isolated with the Invitrogen FFPE kit (by me). The sample size is n=24 for both tumor and normal pancreas (matched patients). Additionally, n=6 FFPE tumor tissue samples from the establishment experiment (patho_ffpe_self) without matched normal pancreas tissue are implemented (so we have n=30 tumor, n=24 normal pancreas). n=75 NTCs (n=23 paraffin tumor, n=24 paraffin normal, n=10 buffer-only, n=7 PCR CTRLs) plus n=11 NTCs from the establishment experiment (patho_ffpe_self) are implemented. 
+
+```{r, echo=FALSE}
+library(PERFect)
+library(microbiome)
+library(phyloseq)
+library(decontam)
+library(tidyverse)
+library(pairwiseAdonis)
+library(kableExtra)
+library(vegan)
+library(tidytree)
+library(ape)
+library(ggrepel)
+library(ggpubr) # for manual p-value assigning
+library(rstatix) # for wilcox test
+library(VennDiagram)
+```
+
+```{r, echo=FALSE}
+source("./MyFunctions.R")
+source("./MyAnalysisWithPlots.R")
+```
+
+# Combining Phyloseq objects
+
+## Loading all physeq-objects 
+
+Run by run was separately analysed and a phyloseq object per run was created. By using a barplot for microbial composition and the beta diversity (weighted UF) outliers are detected per each run. Every outlier is categorized and a reason is described, why we identify this sample as an outlier. 
+
+```{r}
+Path2PhyloSeqObj <- "../../raw_data/PhyloSeqObj_2/"
+physeq1 <- readRDS(paste0(Path2PhyloSeqObj,"2022_05_27_patho_FFPE_tum_panc_1/physeq_original_1500.80.rds"))
+physeq2 <- readRDS(paste0(Path2PhyloSeqObj,"2022_05_27_patho_FFPE_tum_panc_2/physeq_original_1500.80.rds"))
+physeq3 <- readRDS(paste0(Path2PhyloSeqObj,"2022_05_28_patho_FFPE_tum_panc_3/physeq_original_1500.80.rds"))
+physeq4 <- readRDS(paste0(Path2PhyloSeqObj,"2022_05_28_patho_FFPE_tum_panc_4/physeq_original_1500.80.rds"))
+
+p.true.original <- merge_phyloseq(physeq1,physeq2,physeq3,physeq4)
+
+```
+
+Now, we have **`r nrow(sample_data(p.true.original))` samples and `r nrow(otu_table(p.true.original))` taxa**. 
+
+
+## Implement samples from establishment experiment (patho_ffpe_self)
+
+n=6 FFPE tumor tissue samples (without matching normal pancreas).
+
+```{r}
+physeq5 <- readRDS(paste0(Path2PhyloSeqObj,"2021_12_01_patho_FFPE_self_tumor/physeq_original_1500.80.rds"))
+
+# sample_data(physeq5)
+
+physeq5sub <- subset_samples(physeq5, sample_nr!="P19269-20" & sample_nr!="P15970-20" & sample_nr!="P12758-20" & sample_nr!="P3434-20")
+
+# sample_data(physeq5sub)
+
+p.true.original <- merge_phyloseq(p.true.original,physeq5sub)
+
+## clean objects
+rm(list = c("physeq1", "physeq2", "physeq3", "physeq4", "physeq5", "physeq5sub"))
+# sample_data(physeq)
+
+```
+Now in true samples, we have:
+```{r}
+sample_data(p.true.original) %>% pull(sample_side) %>% table()
+```
+We have **`r nrow(sample_data(p.true.original))` samples and `r nrow(otu_table(p.true.original))` taxa**.
+## Loading all negative control (NCT)
+```{r}
+physeq.nct1 <- readRDS(paste0(Path2PhyloSeqObj,"2022_06_02_patho_FFPE_tum_panc_ntc_1/physeq_original_1500.80.rds"))
+physeq.nct2 <- readRDS(paste0(Path2PhyloSeqObj,"2022_06_02_patho_FFPE_tum_panc_ntc_2/physeq_original_1500.80.rds"))
+physeq.nct3 <- readRDS(paste0(Path2PhyloSeqObj,"2022_06_03_patho_FFPE_tum_panc_ntc_3/physeq_original_1500.80.rds"))
+physeq.nct4 <- readRDS(paste0(Path2PhyloSeqObj,"2022_06_03_patho_FFPE_tum_panc_ntc_4/physeq_original_1500.80.rds"))
+physeq.nct5 <- readRDS(paste0(Path2PhyloSeqObj,"2022_06_04_patho_FFPE_tum_panc_ntc_5/physeq_original_1500.80.rds"))
+physeq.nct6 <- readRDS(paste0(Path2PhyloSeqObj,"2022_06_04_patho_FFPE_tum_panc_ntc_6/physeq_original_1500.80.rds"))
+physeq.nct7 <- readRDS(paste0(Path2PhyloSeqObj,"2022_06_10_patho_FFPE_tum_panc_ntc_7/physeq_original_1500.80.rds"))
+physeq.nct8 <- readRDS(paste0(Path2PhyloSeqObj,"2022_07_13_patho_FFPE_tum_panc_ntc_8/physeq_original_1500.80.rds"))
+physeq.nct9 <- readRDS(paste0(Path2PhyloSeqObj,"2022_07_13_patho_FFPE_tum_panc_ntc_9/physeq_original_1500.80.rds"))
+physeq.nct10 <- readRDS(paste0(Path2PhyloSeqObj,"2021_12_02_patho_FFPE_self_ntc/physeq_original_1500.80.rds"))
+physeq.nct11 <- readRDS(paste0(Path2PhyloSeqObj,"2022_01_24_patho_FFPE_self_ntc_2/physeq_original_1500.80.rds"))
+
+physeq.nct.original <- merge_phyloseq(physeq.nct1, physeq.nct2, physeq.nct3, physeq.nct4, physeq.nct5, physeq.nct6, physeq.nct7, physeq.nct8, physeq.nct9, physeq.nct10, physeq.nct11)
+
+rm(list = c('physeq.nct1', 'physeq.nct2', 'physeq.nct3', 'physeq.nct4', 'physeq.nct5',
+            'physeq.nct6', 'physeq.nct7', 'physeq.nct8', 'physeq.nct9', 'physeq.nct10', 'physeq.nct11'))
+```
+Now, in NCT samples, we have:
+```{r}
+sample_data(physeq.nct.original) %>% pull(sample_side) %>% table()
+```
+with **`r nrow(sample_data(physeq.nct.original))` samples and `r nrow(otu_table(physeq.nct.original))` taxa**.
+<!---
+## Implementing additional phyloseq objects (repeaters)
+
+XX.XX.22: 
+XX.XX.22: 
+XX.XX.22: 
+
+```{r}
+#physeq6 <- readRDS(paste0(Path2PhyloSeqObj, "2022_08_09_patho_FFPE_tum_panc_rep1/physeq_original_1500.80.rds"))
+#physeq7 <- readRDS(paste0(Path2PhyloSeqObj, "2022_08_09_patho_FFPE_tum_panc_rep2/physeq_original_1500.80.rds"))
+#p.true.original.additional <- merge_phyloseq(physeq6, physeq7)
+# physeq8 <- readRDS("")
+# 
+# physeq <- merge_phyloseq(physeq,physeq6,physeq7,physeq8)
+
+```
+
+
+
+## Identifying Outliers 
+
+Here 2 main groups of outliers are defined: without_antibiotic and with antibiotic treatment besides the outliers excluded because of a technical error.
+Details without_ab:  
+1. oral_flora = higher abundance of oral microorganism in rectal swab samples
+2. slight_dermal_cont = some of the higher abundant species belong to residual dermal flora indicating a possible not sufficient rectal swab
+3. dermal_cont = most high abundant species (> 33%) belong to dermal residual flora indicating a not sufficiant rectal swab
+4. dom_1_spec = One species dominate the microbial composition (> 50%), e.g. E. coli indicating a storage of the sample for longer time (> 3h)
+5. untypical_spec = High abundant species which are not typically found in other samples (1% of the samples)
+6. vaginal_flora = higher abundance of vaginal microorganism in rectal swab samples
+
+-->
+# Filtering, Removing contamination, and Normalization
+
+## Overview 
+
+In order to normalize the data we use used 5 methods:  
+
+1. Filtering for bacterial reads
+2. Deleting all taxIDs without resolution to species level (tax_glom)  
+3. Filtering low abundance taxa, by either one of the methods:
+  3.1. Abundance filtering by PERfect package.
+  3.2. Nejman et al. threshold 10^-4.
+4. Prevalence filtering, either by one of the following methods:
+  4.1. Decontamination (decontam package)
+  4.2. Nejman et al. procudure, including:
+    4.2.1. Remove taxas which have high prevalence in NTCs, threshold is 50%.
+    4.2.2. Remove taxas which have low prevalence in NTCs (<50%), by Binomial test, per-condition and per-batch.
+5. Normalization by rarefaction (phyloseq package)   
+
+
+The first one was already applied during "phyloseq-object-creation" for every single run. Hereby, less abundant taxa were considered as technical/ bioinformatical mistakes rather than true species. The underlying algorithm was the simultanous method. Here we apply the PERfect packge again to eliminate more taxa.  
+
+To decontaminate the TRUE samples decontam is applied. The Negative controls derived from DNA-extraction (blank swab medium was extracted) and library preparation for both approaches (16S rRNA and metagenomics).  
+
+Due to different sequencing depth all samples have to be rarified. To this end rarefaction is used. Details below. Before we filtering all reads which do not contain bacterial reads (also already done in "phyloseq-object-creation"). Furthermore all TaxIDs are removed which do not have a resolution until species level (also already done in "phyloseq-object-creation"). Step 3-4 are conducted to have all normalization steps included, though their impact of the data is 0, because they were done before.
+
+## Filtering - keep only bacterial reads
+We keep only bacterial reads with resolution to species.
+
+Filtering bacterial reads for true sample.
+```{r}
+p.true.filt <- subset_taxa(p.true.original, superkingdom=="Bacteria")
+p.true.filt.s <- tax_glom(p.true.filt, taxrank = "species", NArm = TRUE)
+
+rm(p.true.filt)
+```
+
+Now in true sample, we have `r nrow(sample_data(p.true.filt.s))` samples and `r nrow(otu_table(p.true.filt.s))` taxa.
+
+Filtering bacterial reads for NTC samples.
+```{r}
+physeq.nct.filt <- subset_taxa(physeq.nct.original, superkingdom=="Bacteria")
+physeq.nct.filt.s <- tax_glom(physeq.nct.filt, taxrank = "species", NArm = TRUE)
+```
+
+Now, in NTC samples,  we have `r nrow(sample_data(physeq.nct.filt.s))` samples and `r nrow(otu_table(physeq.nct.filt.s))` taxa.
+
+Overlapping of taxa between true samples and NTC samples.
+```{r}
+set_taxa_p.true.filt.s <- row.names(otu_table(p.true.filt.s)) %>% unique()
+set_taxa_physeq.nct.filt.s <- row.names(otu_table(physeq.nct.filt.s)) %>% unique()
+## draw Venn diagram
+library(RColorBrewer)
+myCol <- brewer.pal(3, "Pastel2")[1:2]
+plt <- venn.diagram(
+        x = list(set_taxa_p.true.filt.s, set_taxa_physeq.nct.filt.s),
+        category.names = c("True Samples" , "NCT Samples "),
+        filename = NULL
+)
+grid::grid.newpage()
+grid::grid.draw(plt)
+```
+
+## Low Abundance filtering
+Remove taxa from true sample (and NCT samples???, I have not done with NCT samples) if their abundance are too low, either by a threshold 10^-4 or by PERfect package. In this example, I choose to use PERfect package.
+```{r}
+p.true.RmLowAbun <- Wrapper_FERfect(p.true.filt.s)
+```
+
+Now we have `r nrow(sample_data(p.true.RmLowAbun))` samples and `r nrow(otu_table(p.true.RmLowAbun))` taxa. 
+
+To control, let us check the taxa overlap between NCT samples and true sample after PERfect.
+```{r}
+plt <- venn.diagram(
+        x = list(row.names(otu_table(p.true.RmLowAbun)) %>% unique(), row.names(otu_table(physeq.nct.filt.s)) %>% unique()),
+        category.names = c("True Samples" , "NCT Samples "),
+        filename = NULL
+)
+grid::grid.newpage()
+grid::grid.draw(plt)
+```
+
+There are 235 taxa belong to NCT samples but not in true samples (after PERfect). They are obvious contamination. Thus we prune them from NCT samples
+```{r}
+set_taxa_intersect_nct <-  intersect(row.names(otu_table(p.true.RmLowAbun)) %>% unique(), row.names(otu_table(physeq.nct.filt.s)) %>% unique())
+physeq.nct.filt.s.prune <- prune_taxa(set_taxa_intersect_nct, physeq.nct.filt.s)
+```
+
+## Filtering by Prevalence
+We following the procudure from Nejman et al. 2020, which comprises two steps:
+
+### High prevalence filering
+Any tax which has high prevalence (>= a threshold) in NCT samples is considered as contamination. 
+First, we plot a graph to determine the cut-off of high prevalence. 
+```{r}
+xout <- HighPrevalence_Data(p.true.RmLowAbun, physeq.nct.filt.s.prune)
+plot(xout$factorx, xout$rel_tax)
+```
+From this plot, a threshold 0.3 would be fine.
+```{r}
+filter <- 0.3
+filtered_taxa1 <- tibble(
+  Cont = genefilter_sample(physeq.nct.filt.s.prune, filterfun_sample(function(x) x > 0), A=filter*nsamples(physeq.nct.filt.s.prune)),
+  OTU = names(genefilter_sample(physeq.nct.filt.s.prune, filterfun_sample(function(x) x > 0), A=filter*nsamples(physeq.nct.filt.s.prune)))
+) %>% 
+  arrange (-Cont)
+
+cont.count <- filtered_taxa1 %>% count(Cont) 
+cont.count %>% 
+  kable (caption=paste("Count of contaminants (filter", filter*100, " %)"), booktabs =TRUE) %>%
+  kable_classic(full_width = F, html_font = "Cambria") %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive")) 
+```
+
+And list of contaminants
+```{r}
+df.fam.melt <- psmelt(physeq.nct.filt.s.prune)
+df.fam.melt %>% select(OTU, species) %>% 
+  unique %>% 
+  right_join(filtered_taxa1) %>% 
+  filter(Cont == TRUE) %>% 
+  select(-Cont) %>% 
+  kable (caption=paste("Contaminants (filter", filter*100, " %)"), booktabs =TRUE) %>%
+  kable_classic(full_width = F, html_font = "Cambria") %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive")) %>% 
+  scroll_box(width = "70%", height = "600px")
+```
+
+
+### Low prevalence filtering.
+
+For those taxa whose prevalence are low in NCT samples, we apply Binomial test per-condition, per-batch to 
+
+<!---
+# Decontamination approach ala Nejman et al.
+
+Details are found under following [link](https://www.science.org/action/downloadSupplement?doi=10.1126%2Fscience.aay9189&file=aay9189_nejman_sm.pdf). A step by step abstract is provided for the decontamination protocol (hit calling pipeline" by Nejman et al. and information about adjustments to our special type of data set are given.
+
+The whole set of Nejman et al. included 1526 samples, whereas 811 were controls (53%). In comparison our set of data has 129 samples with 75 controls (58%)
+
+## Exclude low read count NTCs
+
+1. Nejman: All NTC with read counts < 1000 are excluded (in total 10 samples from 811 samples).  
+
+Here I read in again all NTCs. In comparison to the above deconatam approach I at first will not apply any Perfect filtering (Prevalence filtering) to keep as much reads as possible. Only the filtering for bacterial reads and the tax_glom on species level will be conducted.
+
+```{r}
+physeq.nct1 <- readRDS(paste0(Path2PhyloSeqObj,"2022_06_02_patho_FFPE_tum_panc_ntc_1/physeq_original_50.rds"))
+physeq.nct2 <- readRDS(paste0(Path2PhyloSeqObj,"2022_06_02_patho_FFPE_tum_panc_ntc_2/physeq_original_50.rds"))
+physeq.nct3 <- readRDS(paste0(Path2PhyloSeqObj,"2022_06_03_patho_FFPE_tum_panc_ntc_3/physeq_original_50.rds"))
+physeq.nct4 <- readRDS(paste0(Path2PhyloSeqObj,"2022_06_03_patho_FFPE_tum_panc_ntc_4/physeq_original_50.rds"))
+physeq.nct5 <- readRDS(paste0(Path2PhyloSeqObj,"2022_06_04_patho_FFPE_tum_panc_ntc_5/physeq_original_50.rds"))
+physeq.nct6 <- readRDS(paste0(Path2PhyloSeqObj,"2022_06_04_patho_FFPE_tum_panc_ntc_6/physeq_original_50.rds"))
+physeq.nct7 <- readRDS(paste0(Path2PhyloSeqObj,"2022_06_10_patho_FFPE_tum_panc_ntc_7/physeq_original_50.rds"))
+physeq.nct8 <- readRDS(paste0(Path2PhyloSeqObj,"2022_07_13_patho_FFPE_tum_panc_ntc_8/physeq_original_50.rds"))
+physeq.nct9 <- readRDS(paste0(Path2PhyloSeqObj,"2022_07_13_patho_FFPE_tum_panc_ntc_9/physeq_original_50.rds"))
+physeq.nct10 <- readRDS(paste0(Path2PhyloSeqObj,"2021_12_02_patho_FFPE_self_ntc/physeq_original.rds"))
+physeq.nct11 <- readRDS(paste0(Path2PhyloSeqObj,"2022_01_24_patho_FFPE_self_ntc_2/physeq_original.rds"))
+
+
+physeq.nct <- merge_phyloseq(physeq.nct1, physeq.nct2, physeq.nct3, physeq.nct4, physeq.nct5, physeq.nct6, physeq.nct7, physeq.nct8, physeq.nct9, physeq.nct10, physeq.nct11)
+
+sample_data(physeq.nct)$sample_side <- ifelse(sample_data(physeq.nct)$sample_side == "paraffin", "paraffin_tumor", sample_data(physeq.nct)$sample_side)
+
+physeq.filt.nct <- subset_taxa(physeq.nct, superkingdom=="Bacteria")
+physeq.filt.nct.s <- tax_glom(physeq.filt.nct, taxrank = "species", NArm = TRUE)
+
+bac.count.ntc <- tibble(bac.count = sample_sums(physeq.filt.nct.s), 
+                        sample = sample_data(physeq.filt.nct.s)$id) %>% 
+  arrange (bac.count)
+
+tibble(
+  ">250 reads" = length(which(bac.count.ntc$bac.count > 250)),
+  ">500 reads" = length(which(bac.count.ntc$bac.count > 500)),
+  ">750 reads" = length(which(bac.count.ntc$bac.count > 750)),
+  ">1000 reads" = length(which(bac.count.ntc$bac.count > 1000)),
+)  %>% 
+  kable (caption="NTC read counts", booktabs =TRUE) %>%
+  kable_classic(full_width = F, html_font = "Cambria") %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive")) 
+
+id.ex <- bac.count.ntc %>% filter(bac.count < 750) %>% pull (sample)
+```
+
+
+According to the table above we choose a cut-off of 750 reads. So we have nearly the same read count as Nejman et al and we still have almost 50% NTC vs. true samples. 
+
+```{r}
+physeq.filt.nct.s <- subset_samples(physeq.filt.nct.s, !(id %in% id.ex))
+```
+
+## Prevalence filtering (abundance filtering)
+
+2. Nejman et al. applied a low abundance filtering according the rule of thumb (excluding all bacteria with a relative abundance < 10⁻⁴ %)  
+
+```{r}
+p.comb.filt.s <- merge_phyloseq(physeq.filt.nct.s, p.true.filt.s)
+# Nejman prevalence filtering for controls
+
+physeq.filt.nct.s.prev.filt <- transform_sample_counts(physeq.filt.nct.s, function(x){x/sum(x)})
+physeq.filt.nct.s.prev.filt <- filter_taxa(physeq.filt.nct.s.prev.filt, function(x) mean(x) > 1e-4, TRUE)
+
+# Nejman prevalence filtering for true samples
+
+p.true.filt.s.rel <- transform_sample_counts(p.true.filt.s, function(x){x/sum(x)})
+physeq.true.filt.s.prev.filt <- filter_taxa(p.true.filt.s.rel, function(x) mean(x) > 1e-4, TRUE)
+
+# combining ntc with true samples
+
+p.comb.filt.s.prev <- merge_phyloseq(physeq.true.filt.s.prev.filt, physeq.filt.nct.s.prev.filt)
+
+# Perfect prevalence filtering
+
+otu = as(otu_table(physeq.filt.nct.s), "matrix")
+if(taxa_are_rows(physeq.filt.nct.s)){otu <- t(otu)}
+otu = as_tibble(otu)
+res_sim <- PERFect_sim(X = otu)
+dim(res_sim$filtX)
+ids.sim<- colnames(res_sim$filtX)
+physeq.filt.nct.s.perfect <-  prune_taxa(ids.sim, physeq.filt.nct.s)
+```
+
+Hereby there were only `r nrow(otu_table(physeq.filt.nct.s.prev.filt))` taxa from initially `r nrow(otu_table(physeq.filt.nct.s))` kept. With our perfect prevalence method we kept `r nrow(otu_table(physeq.filt.nct.s.perfect))`. So our approach does not filter as much as the rule of thumb applied by Nejman et al..
+
+## Filter 1 - Removing global environmental and paraffin contaminants
+
+3. Here Nejman et al. removed all species that were prevalent across more than 7.5% of negative DNA/PCR/Sequencing controls or more than 7.5% of empty paraffin controls. The threshold of 7.5% was determined on the inflection point in the species prevalence abundance distribution (figure S9b in Nejman et al.). Here the x-axis represents the relative prevalence of all species oin control samples plotted against frequencies of species (whole data set (true samples and controls combined)).
+
+### Prevalence - Abundance distribution
+
+![Nejman et al. Prevalence - abundance distribution](add_files/abundance_prev_dist_controls_nejaman.png)
+
+
+
+### Microbial composition true samples vs. controls
+
+In Comparison, we have another distribution than Nejman et al.. Highly abundant species are found in the most control samples. We further want to make a glimpse in the microbial composition of pooled control samples and true samples to further visualize this finding.
+
+```{r, fig.height=6, fig.width=10}
+physeq.fam <- transform_sample_counts(p.comb.filt.s.prev, function(x){x/sum(x)})
+df.fam.melt <- psmelt(p.comb.filt.s.prev) 
+
+df.fam.melt$species.v2 <- ifelse(df.fam.melt$Abundance>.1,as.character(df.fam.melt$species), "others")
+df.fam.melt$species.v2 <- factor(df.fam.melt$species.v2, levels=rev(unique(df.fam.melt$species.v2)))
+cols <- c("#9d547c","#56ca63","#a357d6","#419d2a","#525fd6","#8cbe3a","#c944aa","#5ba557","#9e66cb","#c1b735","#6d82ec","#e69728","#6654b0","#799330","#da7fdf","#3c782c","#e44586","#63c996","#dc3f53","#49cbc8","#cf3f29","#4fabda","#da6c2b","#598bd1","#b78c24","#8d4191","#a0b971","#b2386a","#479d71","#ae4341","#2ba198","#e07557","#5361a3","#dda353","#aa98df","#5b6114","#dc89bf","#327243","#e57b94","#277257","#9b62a0","#bbab59","#98495a","#526229","#d8827d","#857624","#9a4a22","#7c7d46","#e3a073","#9e6b33", "lawngreen", "orchid2", "olivedrab1", "ivory3", "darkseagreen", "bisque2", "darkgoldenrod2", "blue2", "skyblue", "seashell2", "turquoise", "tan1", "seagreen2", "palevioletred3", "linen", "steelblue4", "limegreen", "purple3", "khaki3", "snow3", "darkslategray", "magenta2", "palegreen", "salmon", "maroon", "cyan2")
+
+
+ggplot(df.fam.melt, aes(x=id, y=Abundance, fill=species.v2)) +
+  geom_bar(stat="identity") +
+  scale_y_continuous(labels = scales::percent, expand = c(0, 0), limits = c(0, 1.02)) +
+  scale_fill_manual(values = cols) +
+  xlab ("") +
+  ylab("Relative abundance") +
+  theme_bw() +
+  facet_wrap(.~TRUE_control,  scales = "free_x")+
+  ggtitle("Microbial composition at species level")+
+  theme( axis.text.x = element_blank(),
+        axis.text.y = element_text (size=12),
+        axis.title = element_text(size=14, face="bold"))+
+  theme(legend.position = "bottom",
+        legend.title = element_blank(),
+        legend.background = element_rect(size=0.25, linetype="solid", colour ="black"),
+        legend.key.size = unit(4,"mm"))
+
+```
+
+This barplot verify the findings of the prevalence - abundance distribution. The most abundant taxa are found in controls and true samples. Most of them belong to the genus Sphingomonas a known bacterium from the environment.
+
+### Applying filter 1
+
+Following we will apply the filter 1. Here we do not separate the control physeq object in paraffin and the other controls. We have too less buffer/ PCR H2O controls (> 7.5% would mean a whole sample, meaning all taxa from these controls will be removed). Thus we define all species as contaminant which occur in more than 7.5% of ALL controls. That means a species have to occur in `r round(nrow(sample_data(physeq.filt.nct.s.prev.filt))*0.075, digits = 0)` controls to be defined as contaminant.  
+
+#### Nejman threshold 
+
+```{r}
+filter <- 0.075
+
+filtered_taxa1 <- tibble(
+  Cont = genefilter_sample(physeq.filt.nct.s.prev.filt, filterfun_sample(function(x) x > 0), A=filter*nsamples(physeq.filt.nct.s.prev.filt)),
+  OTU = names(genefilter_sample(physeq.filt.nct.s.prev.filt, filterfun_sample(function(x) x > 0), A=filter*nsamples(physeq.filt.nct.s.prev.filt)))
+) %>% 
+  arrange (-Cont)
+
+cont.count <- filtered_taxa1 %>% count(Cont) 
+cont.count %>% 
+  kable (caption=paste("Count of contaminants (filter", filter*100, " %)"), booktabs =TRUE) %>%
+  kable_classic(full_width = F, html_font = "Cambria") %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive")) 
+```
+
+##### List of Contaminants
+
+```{r}
+df.fam.melt %>% select(OTU, species) %>% 
+  unique %>% 
+  right_join(filtered_taxa1) %>% 
+  filter(Cont == TRUE) %>% 
+  select(-Cont) %>% 
+  kable (caption=paste("Contaminants (filter", filter*100, " %)"), booktabs =TRUE) %>%
+  kable_classic(full_width = F, html_font = "Cambria") %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive")) %>% 
+  scroll_box(width = "70%", height = "600px")
+```
+
+
+#### Alternative threshold 
+
+Applying the Nejman et al. threshold of 7.5 % will define most taxa as Contaminants (n = `r cont.count[2,2]`) which occur in the controls. However, our prevalence - abundance curve shows a different distribution. Therefore, another cut-off according to this distribution seems reasonable.
+
+```{r}
+filter <- 0.7
+
+filtered_taxa1 <- tibble(
+  Cont = genefilter_sample(physeq.filt.nct.s.prev.filt, filterfun_sample(function(x) x > 0), A=filter*nsamples(physeq.filt.nct.s.prev.filt)),
+  OTU = names(genefilter_sample(physeq.filt.nct.s.prev.filt, filterfun_sample(function(x) x > 0), A=filter*nsamples(physeq.filt.nct.s.prev.filt)))
+) %>% 
+  arrange (-Cont)
+
+cont.count <- filtered_taxa1 %>% count(Cont) 
+cont.count %>% 
+  kable (caption=paste("Count of contaminants (filter", filter*100, " %)"), booktabs =TRUE) %>%
+  kable_classic(full_width = F, html_font = "Cambria") %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive")) 
+```
+
+##### List of Contaminants
+
+```{r}
+df.fam.melt %>% select(OTU, species) %>% 
+  unique %>% 
+  right_join(filtered_taxa1) %>% 
+  filter(Cont == TRUE) %>% 
+  select(-Cont) %>% 
+  kable (caption=paste("Contaminants (filter", filter*100, " %)"), booktabs =TRUE) %>%
+  kable_classic(full_width = F, html_font = "Cambria") %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive")) %>% 
+  scroll_box(width = "70%", height = "600px")
+```
+
+Now, only `r cont.count[2,2]` were defined as Contaminants. That means `r round(cont.count[2,2]/sum(cont.count$n)*100, digits = 1)` % of the taxa. In comparison Nejman et al. removed `r round(100-9023/9190*100, digits = 1)` % of the taxa with the first general filter.
+
+### Filter 2 - 3
+
+In order to remove the less prevalent contaminations, Nejman et al. compared taxa prevalences in samples to their prevalences in controls based on the assumption that "even in a low-biomass regime, the non-contaminants will appear in a larger fraction of true samples than in negative controls". This approach veers away from skewed relative abundance data which occur when contaminations are high and relies more heavily on absent/present calls, which along with flooring by relative abundance (see above), reduces the noise variation of presence/absence calling at the very low abundance levels.
+As the RIDE guidelines and additional research indicate, different contamination profiles can vary across processing batches and time.
+Nejman et al. thus shifted to a 'percondition' (a combined tissue+tumor/NAT/normal status) contamination analysis. Therefore, our comparisons between taxon prevalence in samples and controls were done on a per-condition, per-batch basis, comparing samples from the same condition to the controls that were processed alongside them. This was done for the three different processing batch types; DNA extraction batch (filter 2), PCR amplification batch (filter 3), and sequencing library batch (filter 4). **They employed the non-parametric, exact, binomial test on each taxa's prevalence, x=number of successes in the sample & n=sample size to the background p= taxa's prevalence in the relevant batch controls**. Only taxa that passed a p-value cutoff of 0.05 in all batch comparisons (filters 2-4) were considered in the next filtering stage.
+
+We only have controls for filter 2 (DNA extraction) and filter 3 (PCR). First of all we separate the phyloseq objects accordingly (samples + certain control batch (PCR or buffer).
+Here we take the not prevalence filtered physeq object, because we need absolute abundances. Due to our prevalence filtering we irreversibly transformed the abundances to relative values. 
+```{r}
+p.comb.pcr <- subset_samples(p.comb.filt.s, sample_side == "PCR_ctrl_H2O" | TRUE_control == "TRUE")
+p.comb.buffer <- subset_samples(p.comb.filt.s, sample_side == "buffer" | TRUE_control == "TRUE")
+```
+
+We then removed all species identified in filter 1 (defined in ont.filt1) from both phyloseq objects. 
+
+```{r}
+cont.filt1 <- df.fam.melt %>% select(OTU, species) %>% 
+  unique %>% 
+  right_join(filtered_taxa1) %>% 
+  filter(Cont == TRUE) %>% 
+  pull(species)
+
+p.comb.pcr <- subset_taxa(p.comb.pcr,!species %in% cont.filt1)
+p.comb.buffer <- subset_taxa(p.comb.buffer,!species %in% cont.filt1)
+```
+
+#### DNA extraction filter
+
+```{r}
+#test
+
+df <- psmelt(p.comb.buffer) 
+
+# binomal test for Acidovorax sp.
+
+rp <- subset_taxa(p.comb.buffer, species == "Acidovorax sp." | species == "Ramlibacter tataouinensis")
+otu_table(rp)
+rp.ntc <- subset_samples(rp, sample_side == "buffer")
+rp.true <- subset_samples(rp, TRUE_control == "TRUE")
+
+p <- sum(prevalence(rp.ntc, detection = 0, count = TRUE))/length(prevalence(rp.ntc, detection = 0, count = TRUE))
+
+
+x <- otu_tibble(rp.true) %>% rowwise(FeatureID) %>% summarise(sum = sum(c_across(contains("tumor") | contains("normal"))))
+#
+```
+
+https://www.statology.org/binomial-test-r/
+-->
