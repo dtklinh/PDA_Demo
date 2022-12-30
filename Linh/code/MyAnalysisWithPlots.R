@@ -19,7 +19,11 @@ compositional_analysis <- function(PhyloseqObj, target_rank='order', rel_abundan
   }
   
   df.fam.melt$target_rank <- factor(df.fam.melt$target_rank, levels=rev(unique(df.fam.melt$target_rank)))
-  cols <- c("#9d547c","#56ca63","#a357d6","#419d2a","#525fd6","#8cbe3a","#c944aa","#5ba557","#9e66cb","#c1b735","#6d82ec","#e69728","#6654b0","#799330","#da7fdf","#3c782c","#e44586","#63c996","#dc3f53","#49cbc8","#cf3f29","#4fabda","#da6c2b","#598bd1","#b78c24","#8d4191","#a0b971","#b2386a","#479d71","#ae4341","#2ba198","#e07557","#5361a3","#dda353","#aa98df","#5b6114","#dc89bf","#327243","#e57b94","#277257","#9b62a0","#bbab59","#98495a","#526229","#d8827d","#857624","#9a4a22","#7c7d46","#e3a073","#9e6b33")
+  cols <- c("#9d547c","#56ca63","#a357d6","#419d2a","#525fd6","#8cbe3a","#c944aa","#5ba557","#9e66cb","#c1b735","#6d82ec","#e69728",
+            "#6654b0","#799330","#da7fdf","#3c782c","#e44586","#63c996","#dc3f53","#49cbc8","#cf3f29","#4fabda","#da6c2b","#598bd1",
+            "#b78c24","#8d4191","#a0b971","#b2386a","#479d71","#ae4341","#2ba198","#e07557","#5361a3","#dda353","#aa98df","#5b6114",
+            "#dc89bf","#327243","#e57b94","#277257","#9b62a0","#bbab59","#98495a","#526229","#d8827d","#857624","#9a4a22","#7c7d46",
+            "#e3a073","#9e6b33")
   
   
   ggplot(df.fam.melt, aes(x=id, y=Abundance, fill=target_rank)) +
@@ -150,4 +154,29 @@ beta_analysis <- function(PhyloseqObj, distance_metric="unweighted UF"){
       legend.title = element_blank())+
     geom_text(data=annotations,aes(x=xpos,y=ypos,hjust=hjustvar,vjust=vjustvar,label=annotateText), inherit.aes = FALSE)
   
+}
+##---------------------------------------------------
+#Plot Venn diagram for two sets
+PlotVenn2Sets <- function(set1, set2, nameset1, nameset2){
+  plt <- venn.diagram(
+    x = list(set1, set2),
+    category.names = c(nameset1 , nameset2),
+    filename = NULL
+  )
+  grid::grid.newpage()
+  grid::grid.draw(plt)
+}
+###-----------------------------------------
+Inspect_taxa_Species <- function(PhyseqObj, capstr){
+  
+  df.fam.melt <- psmelt(PhyseqObj)
+  df.fam.melt %>% select(OTU, species) %>% 
+    unique %>% 
+    #right_join(filtered_taxa1) %>% 
+    #filter(Cont == TRUE) %>% 
+    #select(-Cont) %>% 
+    kable (caption=capstr, booktabs =TRUE) %>%
+    kable_classic(full_width = F, html_font = "Cambria") %>%
+    kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive")) %>% 
+    scroll_box(width = "70%", height = "600px")
 }

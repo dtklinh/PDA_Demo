@@ -69,14 +69,14 @@ physeq5 <- readRDS(paste0(Path2PhyloSeqObj,"2021_12_01_patho_FFPE_self_tumor/phy
 
 # sample_data(physeq5)
 
-physeq5sub <- subset_samples(physeq5, sample_nr!="P19269-20" & sample_nr!="P15970-20" & sample_nr!="P12758-20" & sample_nr!="P3434-20")
+#physeq5sub <- subset_samples(physeq5, sample_nr!="P19269-20" & sample_nr!="P15970-20" & sample_nr!="P12758-20" & sample_nr!="P3434-20")
 
 # sample_data(physeq5sub)
 
-p.true.original <- merge_phyloseq(p.true.original,physeq5sub)
+p.true.original <- merge_phyloseq(p.true.original,physeq5)
 
 ## clean objects
-rm(list = c("physeq1", "physeq2", "physeq3", "physeq4", "physeq5", "physeq5sub"))
+rm(list = c("physeq1", "physeq2", "physeq3", "physeq4", "physeq5"))
 # sample_data(physeq)
 
 ```
@@ -109,6 +109,8 @@ Now, in NCT samples, we have:
 sample_data(physeq.nct.original) %>% pull(sample_side) %>% table()
 ```
 with **`r nrow(sample_data(physeq.nct.original))` samples and `r nrow(otu_table(physeq.nct.original))` taxa**.
+
+
 <!---
 ## Implementing additional phyloseq objects (repeaters)
 
@@ -156,7 +158,8 @@ In order to normalize the data we use used 5 methods:
   4.2. Nejman et al. procudure, including:
     4.2.1. Remove taxas which have high prevalence in NTCs, threshold is 50%.
     4.2.2. Remove taxas which have low prevalence in NTCs (<50%), by Binomial test, per-condition and per-batch.
-5. Normalization by rarefaction (phyloseq package)   
+5. Batch effect correction (by ConQuR)
+6. Normalization by rarefaction (phyloseq package)   
 
 
 The first one was already applied during "phyloseq-object-creation" for every single run. Hereby, less abundant taxa were considered as technical/ bioinformatical mistakes rather than true species. The underlying algorithm was the simultanous method. Here we apply the PERfect packge again to eliminate more taxa.  
@@ -164,6 +167,9 @@ The first one was already applied during "phyloseq-object-creation" for every si
 To decontaminate the TRUE samples decontam is applied. The Negative controls derived from DNA-extraction (blank swab medium was extracted) and library preparation for both approaches (16S rRNA and metagenomics).  
 
 Due to different sequencing depth all samples have to be rarified. To this end rarefaction is used. Details below. Before we filtering all reads which do not contain bacterial reads (also already done in "phyloseq-object-creation"). Furthermore all TaxIDs are removed which do not have a resolution until species level (also already done in "phyloseq-object-creation"). Step 3-4 are conducted to have all normalization steps included, though their impact of the data is 0, because they were done before.
+
+
+
 
 ## Filtering - keep only bacterial reads
 We keep only bacterial reads with resolution to species.
@@ -182,6 +188,29 @@ Filtering bacterial reads for NTC samples.
 ```{r}
 physeq.nct.filt <- subset_taxa(physeq.nct.original, superkingdom=="Bacteria")
 physeq.nct.filt.s <- tax_glom(physeq.nct.filt, taxrank = "species", NArm = TRUE)
+rm(physeq.nct.filt)
+```
+**Further, Remove low read count NCTs**
+Remove NCT samples if their readcount less than 150
+```{r}
+bac.count.ntc <- tibble(bac.count = sample_sums(physeq.nct.filt.s), 
+                        sample = sample_data(physeq.nct.filt.s)$id) %>% 
+  arrange (bac.count)
+
+tibble(
+  ">150 reads" = length(which(bac.count.ntc$bac.count > 150)),
+  ">250 reads" = length(which(bac.count.ntc$bac.count > 250)),
+  ">500 reads" = length(which(bac.count.ntc$bac.count > 500)),
+  ">750 reads" = length(which(bac.count.ntc$bac.count > 750)),
+  ">1000 reads" = length(which(bac.count.ntc$bac.count > 1000)),
+)  %>% 
+  kable (caption="NTC read counts", booktabs =TRUE) %>%
+  kable_classic(full_width = F, html_font = "Cambria") %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive")) 
+
+id.ex <- bac.count.ntc %>% filter(bac.count < 150) %>% pull (sample)
+physeq.nct.filt.s <- subset_samples(physeq.nct.filt.s, !(id %in% id.ex))
+physeq.nct.filt.s <- prune_taxa(taxa_sums(physeq.nct.filt.s)>0, physeq.nct.filt.s)
 ```
 
 Now, in NTC samples,  we have `r nrow(sample_data(physeq.nct.filt.s))` samples and `r nrow(otu_table(physeq.nct.filt.s))` taxa.
@@ -191,15 +220,7 @@ Overlapping of taxa between true samples and NTC samples.
 set_taxa_p.true.filt.s <- row.names(otu_table(p.true.filt.s)) %>% unique()
 set_taxa_physeq.nct.filt.s <- row.names(otu_table(physeq.nct.filt.s)) %>% unique()
 ## draw Venn diagram
-library(RColorBrewer)
-myCol <- brewer.pal(3, "Pastel2")[1:2]
-plt <- venn.diagram(
-        x = list(set_taxa_p.true.filt.s, set_taxa_physeq.nct.filt.s),
-        category.names = c("True Samples" , "NCT Samples "),
-        filename = NULL
-)
-grid::grid.newpage()
-grid::grid.draw(plt)
+PlotVenn2Sets(set_taxa_p.true.filt.s, set_taxa_physeq.nct.filt.s, "True samples","NCT samples")
 ```
 
 ## Low Abundance filtering
@@ -212,23 +233,19 @@ Now we have `r nrow(sample_data(p.true.RmLowAbun))` samples and `r nrow(otu_tabl
 
 To control, let us check the taxa overlap between NCT samples and true sample after PERfect.
 ```{r}
-plt <- venn.diagram(
-        x = list(row.names(otu_table(p.true.RmLowAbun)) %>% unique(), row.names(otu_table(physeq.nct.filt.s)) %>% unique()),
-        category.names = c("True Samples" , "NCT Samples "),
-        filename = NULL
-)
-grid::grid.newpage()
-grid::grid.draw(plt)
+PlotVenn2Sets(row.names(otu_table(p.true.RmLowAbun)) %>% unique(),
+              row.names(otu_table(physeq.nct.filt.s)) %>% unique(),
+              "True Samples" , "NCT Samples ")
 ```
 
-There are 235 taxa belong to NCT samples but not in true samples (after PERfect). They are obvious contamination. Thus we prune them from NCT samples
+There are `r setdiff(rownames(otu_table(physeq.nct.filt.s)), rownames(otu_table(p.true.RmLowAbun))) %>% length()` taxa belong to NCT samples but not in true samples (after PERfect). They are obvious contamination. Thus we prune them from NCT samples
 ```{r}
 set_taxa_intersect_nct <-  intersect(row.names(otu_table(p.true.RmLowAbun)) %>% unique(), row.names(otu_table(physeq.nct.filt.s)) %>% unique())
 physeq.nct.filt.s.prune <- prune_taxa(set_taxa_intersect_nct, physeq.nct.filt.s)
 ```
 
 ## Filtering by Prevalence
-We following the procudure from Nejman et al. 2020, which comprises two steps:
+We follow the procudure from Nejman et al. 2020, which comprises two steps:
 
 ### High prevalence filering
 Any tax which has high prevalence (>= a threshold) in NCT samples is considered as contamination. 
@@ -269,10 +286,135 @@ df.fam.melt %>% select(OTU, species) %>%
   scroll_box(width = "70%", height = "600px")
 ```
 
+We now remove those taxa which have high prevalence in NTC samples out of true (and NTC) samples.
+```{r}
+p.true.RmLowAbun.RmHighPrev <- prune_taxa(setdiff(rownames(otu_table(p.true.RmLowAbun)),filtered_taxa1[filtered_taxa1$Cont==TRUE,] %>% pull("OTU")), p.true.RmLowAbun)
+```
+Now we have `r nrow(sample_data(p.true.RmLowAbun.RmHighPrev))` true samples and `r nrow(otu_table(p.true.RmLowAbun.RmHighPrev))` taxa. In NCTs, we have `r nrow(sample_data(physeq.nct.filt.s.prune))` control samples and `r nrow(otu_table(physeq.nct.filt.s.prune))` taxa
+
+Venn diagram of taxa now
+```{r}
+PlotVenn2Sets(rownames(otu_table(p.true.RmLowAbun.RmHighPrev)), rownames(otu_table(physeq.nct.filt.s)), "True samples", "NCT sample")
+```
 
 ### Low prevalence filtering.
 
-For those taxa whose prevalence are low in NCT samples, we apply Binomial test per-condition, per-batch to 
+For those taxa whose prevalence are low in NCT samples, we apply Binomial test per-condition, per-batch to remove contaminants.
+```{r}
+# load metadata
+library("readxl")
+metadata <- read_excel("../../raw_data/Metadata_2.xlsx") %>% as.data.frame()
+metadata <- metadata[,c("uniqueID", "sample_side", "sample_nr", "TRUE_control", "DNAex_round", "PCR_round")]
+physeq.comb.filt <- merge_phyloseq(p.true.RmLowAbun.RmHighPrev, physeq.nct.filt.s.prune)
+sample_data(physeq.comb.filt)$is.neg <- sample_data(physeq.comb.filt)$TRUE_control == "control"
+```
+
+The samples in each condition each batch must contain both true sample and NCT ones in order to apply Binomial test. Thus, we firstly check how many of them are valid 
+```{r}
+# filter metadata 
+keep_idx <- sample_data(physeq.comb.filt) %>% pull(uniqueID) %>% unique()
+metadata <- metadata[metadata$uniqueID %in% keep_idx,]
+metadata <- metadata %>% mutate(sample_type = ifelse(grepl("paraffin", tolower(sample_side), fixed = TRUE),"paraffin", 
+                                                     ifelse(grepl("buffer", tolower(sample_side), fixed = TRUE),"buffer",
+                                                    ifelse(grepl("pcr", tolower(sample_side), fixed = TRUE),"pcr_ctrl", "true_sample"))))
+
+tmp <- metadata$DNAex_round %>% as.numeric()
+DNAex_lst <- tmp[!is.na(tmp)] %>% unique()
+tmp <- metadata$PCR_round %>% as.numeric()
+PCR_lst <- tmp[!is.na(tmp)] %>% unique()
+
+is.valid.DNAex <- lapply(DNAex_lst, is.valid.batch, batch_type="DNA", meta_data=metadata)
+is.valid.PCR <- lapply(PCR_lst, is.valid.batch, batch_type="PCR", meta_data=metadata)
+Tab <- data.frame(matrix(NA, nrow = 2, ncol = 9))
+colnames(Tab) <- c(1:9)
+rownames(Tab) <- c("DNAex_round", "PCR_round")
+Tab["DNAex_round", 1:length(DNAex_lst)] <- is.valid.DNAex
+Tab["PCR_round", 1:length(PCR_lst)] <- is.valid.PCR
+Tab
+```
+
+For each condition each batch, we apply Binomial test to remove contaminants whose prevalence are low in NCT samples
+```{r}
+p.true.RmLowAbun.RmHLPrev <- Wrapper_filter_by_low_prevalence(p.true.RmLowAbun.RmHighPrev,physeq.nct.filt.s,metadata)
+```
+
+
+The taxa overlap is now looks like:
+```{r}
+PlotVenn2Sets(p.true.RmLowAbun.RmHLPrev %>% otu_table() %>% rownames(),
+              physeq.nct.filt.s %>% otu_table() %>% rownames(),
+              "True samples", "NCT samples")
+```
+
+List of all taxa in NCTs but not contaminants
+```{r}
+physeq.nct.NotCont <- prune_taxa(intersect(physeq.nct.filt.s %>% otu_table() %>% rownames(), 
+                                           p.true.RmLowAbun.RmHLPrev %>% otu_table() %>% rownames()),
+                                 physeq.nct.filt.s)
+Inspect_taxa_Species(physeq.nct.NotCont, "In NCTs but not contaminants")
+```
+
+Batch effect correction via ConQuR
+Install ConQuR
+
+```{r, echo=FALSE}
+#install.packages("doParallel")
+#devtools::install_github("wdl2459/ConQuR")
+#devtools::install_github("wdl2459/ConQuR", build_vignettes = TRUE, force=TRUE)
+library(ConQuR)
+library(doParallel)
+```
+We apply the batch effect correction via ConQuR. First, we apply the batch correction on DNAex_round
+```{r}
+otu = as(otu_table(p.true.RmLowAbun.RmHLPrev), "matrix")
+t_otu <- NULL
+if(taxa_are_rows(p.true.RmLowAbun.RmHLPrev)){
+  t_otu <- t(otu); 
+  rownames(t_otu) <- colnames(otu)
+  otu <- t_otu
+}
+otu <- as.data.frame(otu)
+otu$uniqueID <- lapply(otu %>% rownames(), function(x){strsplit(x,split = ".", fixed = TRUE)[[1]][1]})
+otu$uniqueID <- as.integer(otu$uniqueID)
+metadata <- as.data.frame(metadata)
+otu.merge <- merge(x=otu, y=metadata[, c("uniqueID", "DNAex_round", "PCR_round")],  
+                   by.x = "uniqueID", by.y = "uniqueID", all.x = TRUE, all.y = FALSE)
+otu.merge$DNAex_round <- as.factor(otu.merge$DNAex_round)
+otu.merge$PCR_round <- as.factor(otu.merge$PCR_round)
+
+batchid <- otu.merge[,"DNAex_round"]
+covar <- otu.merge[, "PCR_round"]
+batchid2 <- otu.merge[,"PCR_round"]
+covar2 <- otu.merge[, "DNAex_round"]
+taxa_tab <- otu.merge[,c(2:512)] 
+
+taxa_corrected1 = ConQuR(tax_tab=taxa_tab, batchid=batchid, covariates=covar, batch_ref="1")
+```
+
+Then we apply on PCR_round.
+```{r}
+taxa_corrected2 = ConQuR(tax_tab=taxa_corrected1, batchid=batchid2, covariates=covar2, batch_ref="1")
+```
+
+Illustration of batch effect correction
+```{r}
+par(mfrow=c(2, 3))
+
+Plot_PCoA(TAX=taxa_tab, factor=batchid, main="Before Correction, Bray-Curtis")
+Plot_PCoA(TAX=taxa_corrected1, factor=batchid, main="ConQuR (Default), Bray-Curtis - DNAex_round")
+Plot_PCoA(TAX=taxa_corrected2, factor=batchid, main="ConQuR (Default), Bray-Curtis - DNAex & PCR_round")
+
+Plot_PCoA(TAX=taxa_tab, factor=batchid, dissimilarity="Aitch", main="Before Correction, Aitchison")
+Plot_PCoA(TAX=taxa_corrected1, factor=batchid, dissimilarity="Aitch", main="ConQuR (Default), Aitchison - DNAex_round")
+Plot_PCoA(TAX=taxa_corrected2, factor=batchid, dissimilarity="Aitch", main="ConQuR (Default), Aitchison - DNAex & PCR_round")
+```
+
+# Compositional Analysis
+## Original true sample without any filtering
+```{r}
+
+compositional_analysis(p.true.original, target_rank = "species", rel_abundance = 0.03)
+```
 
 <!---
 # Decontamination approach ala Nejman et al.
