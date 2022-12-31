@@ -170,10 +170,11 @@ Wrapper_filter_by_low_prevalence <- function(True.Sample, NCT.Sample, metadata){
   return(prune_taxa(keep_taxa, p.true.RmLowAbun.RmHighPrev))
 }
 ##-------------------------------------------------------------
-Wrapper_BatchEffectCorrection_ConQuR <- function(True.Sample, metadata, batchid, covar){
-  otu = as(otu_table(p.true.RmLowAbun.RmHLPrev), "matrix")
+Wrapper_BatchEffectCorrection_ConQuR <- function(True.Sample, metadata){
+  num_taxa <- True.Sample %>% otu_table() %>% nrow()
+  otu = as(otu_table(True.Sample), "matrix")
   t_otu <- NULL
-  if(taxa_are_rows(p.true.RmLowAbun.RmHLPrev)){
+  if(taxa_are_rows(True.Sample)){
     t_otu <- t(otu); 
     rownames(t_otu) <- colnames(otu)
     otu <- t_otu
@@ -191,9 +192,11 @@ Wrapper_BatchEffectCorrection_ConQuR <- function(True.Sample, metadata, batchid,
   covar <- otu.merge[, "PCR_round"]
   batchid2 <- otu.merge[,"PCR_round"]
   covar2 <- otu.merge[, "DNAex_round"]
-  taxa_tab <- otu.merge[,c(2:512)] 
+  taxa_tab <- otu.merge[,c(2:(ncol(otu.merge)-2))] 
   
   taxa_corrected1 = ConQuR(tax_tab=taxa_tab, batchid=batchid, covariates=covar, batch_ref="1")
+  taxa_corrected2 = ConQuR(tax_tab=taxa_corrected1, batchid=batchid2, covariates=covar2, batch_ref="1")
+  
 }
 ##----------------------------------------
 Subtract_Species <- function(Sample1, Sample2){

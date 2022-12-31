@@ -126,6 +126,8 @@ Plot_PCoA(TAX=taxa_tab, factor=batchid, dissimilarity="Aitch", main="Before Corr
 Plot_PCoA(TAX=taxa_corrected1, factor=batchid, dissimilarity="Aitch", main="ConQuR (Default), Aitchison")
 Plot_PCoA(TAX=taxa_corrected2, factor=batchid, dissimilarity="Aitch", main="ConQuR (Penalized), Aitchison")
 
+tax_table(p.true.RmLowAbun.RmHLPrev) <- t(taxa_corrected2)
+
 p.true.RmLowAbun.RmHLPrev.rar <- rarefy_even_depth(p.true.RmLowAbun.RmHLPrev,sample.size = 1000,rngseed = 711)
 
 compositional_analysis(p.true.RmLowAbun.RmHLPrev.rar,target_rank = "species", rel_abundance = 0.04)
