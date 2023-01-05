@@ -170,32 +170,28 @@ Wrapper_filter_by_low_prevalence <- function(True.Sample, NCT.Sample, metadata){
   return(prune_taxa(keep_taxa, p.true.RmLowAbun.RmHighPrev))
 }
 ##-------------------------------------------------------------
-Wrapper_BatchEffectCorrection_ConQuR <- function(True.Sample, metadata){
-  num_taxa <- True.Sample %>% otu_table() %>% nrow()
-  otu = as(otu_table(True.Sample), "matrix")
-  t_otu <- NULL
+ConQur_apply <- function(True.Sample, metadata, batchName, batch_ref){
+  otu = otu_table(True.Sample) %>% as.data.frame()
   if(taxa_are_rows(True.Sample)){
-    t_otu <- t(otu); 
-    rownames(t_otu) <- colnames(otu)
-    otu <- t_otu
+    otu <- t(otu)
   }
-  otu <- as.data.frame(otu)
-  otu$uniqueID <- lapply(otu %>% rownames(), function(x){strsplit(x,split = ".", fixed = TRUE)[[1]][1]})
-  otu$uniqueID <- as.integer(otu$uniqueID)
   metadata <- as.data.frame(metadata)
-  otu.merge <- merge(x=otu, y=metadata[, c("uniqueID", "DNAex_round", "PCR_round")],  
-                     by.x = "uniqueID", by.y = "uniqueID", all.x = TRUE, all.y = FALSE)
-  otu.merge$DNAex_round <- as.factor(otu.merge$DNAex_round)
-  otu.merge$PCR_round <- as.factor(otu.merge$PCR_round)
+  otu.merge <- merge(x=otu, y=metadata[, batchName],  
+                     by=0, all.x = TRUE, all.y = FALSE)
+  otu.merge[,batchName] <- as.factor(otu.merge[,batchName])
+  rownames(otu.merge) <- otu.merge$Row.names
+  otu.merge <- otu.merge[,-1]
   
-  batchid <- otu.merge[,"DNAex_round"]
-  covar <- otu.merge[, "PCR_round"]
-  batchid2 <- otu.merge[,"PCR_round"]
-  covar2 <- otu.merge[, "DNAex_round"]
-  taxa_tab <- otu.merge[,c(2:(ncol(otu.merge)-2))] 
-  
-  taxa_corrected1 = ConQuR(tax_tab=taxa_tab, batchid=batchid, covariates=covar, batch_ref="1")
-  taxa_corrected2 = ConQuR(tax_tab=taxa_corrected1, batchid=batchid2, covariates=covar2, batch_ref="1")
+  batchid <- otu.merge[,batchName]
+  covar <- otu.merge[, batchName]
+  taxa_tab <- otu.merge[,c(1:(taxa_names(True.Sample) %>% length()))]
+  taxa_corrected = ConQuR(tax_tab=taxa_tab, batchid=batchid, covariates=covar, batch_ref=batch_ref)
+  tmp_Sample <- True.Sample
+  otu_table(tmp_Sample) <- otu_table(taxa_corrected %>% t(), taxa_are_rows = TRUE)
+  return(tmp_Sample)
+}
+##---------------------------------------------------
+Wrapper_BatchEffectCorrection_ConQuR <- function(True.Sample, metadata){
   
 }
 ##----------------------------------------

@@ -1,6 +1,6 @@
 ---
 title: "Patho FFPE human tumor vs. normal pancreas (AS1000Cov50, physeq_original)"
-author: "Nina & Christoph"
+author: "Nina & Christoph, adapted by Linh"
 date: "Report created: `r Sys.Date()`"
 output: 
   html_document:
@@ -10,7 +10,6 @@ output:
 editor_options: 
   chunk_output_type: console
 ---
-Adapter by Linh
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
@@ -40,11 +39,13 @@ source("./MyFunctions.R")
 source("./MyAnalysisWithPlots.R")
 ```
 
-# Combining Phyloseq objects
+# Prepare materials for analyses
 
 ## Loading all physeq-objects 
 
+<!---
 Run by run was separately analysed and a phyloseq object per run was created. By using a barplot for microbial composition and the beta diversity (weighted UF) outliers are detected per each run. Every outlier is categorized and a reason is described, why we identify this sample as an outlier. 
+-->
 
 ```{r}
 Path2PhyloSeqObj <- "../../raw_data/PhyloSeqObj_2/"
@@ -57,7 +58,7 @@ p.true.original <- merge_phyloseq(physeq1,physeq2,physeq3,physeq4)
 
 ```
 
-Now, we have **`r nrow(sample_data(p.true.original))` samples and `r nrow(otu_table(p.true.original))` taxa**. 
+Now, in the true samples we have **`r nrow(sample_data(p.true.original))` samples and `r nrow(otu_table(p.true.original))` taxa**. 
 
 
 ## Implement samples from establishment experiment (patho_ffpe_self)
@@ -142,7 +143,8 @@ Details without_ab:
 6. vaginal_flora = higher abundance of vaginal microorganism in rectal swab samples
 
 -->
-# Filtering, Removing contamination, and Normalization
+# Pre-analysis 
+Before actual analyses, we need to filter taxa, to remove contaminations, and to obtain normalization.
 
 ## Overview 
 
@@ -161,14 +163,14 @@ In order to normalize the data we use used 5 methods:
 5. Batch effect correction (by ConQuR)
 6. Normalization by rarefaction (phyloseq package)   
 
-
+<!---
 The first one was already applied during "phyloseq-object-creation" for every single run. Hereby, less abundant taxa were considered as technical/ bioinformatical mistakes rather than true species. The underlying algorithm was the simultanous method. Here we apply the PERfect packge again to eliminate more taxa.  
 
 To decontaminate the TRUE samples decontam is applied. The Negative controls derived from DNA-extraction (blank swab medium was extracted) and library preparation for both approaches (16S rRNA and metagenomics).  
 
 Due to different sequencing depth all samples have to be rarified. To this end rarefaction is used. Details below. Before we filtering all reads which do not contain bacterial reads (also already done in "phyloseq-object-creation"). Furthermore all TaxIDs are removed which do not have a resolution until species level (also already done in "phyloseq-object-creation"). Step 3-4 are conducted to have all normalization steps included, though their impact of the data is 0, because they were done before.
 
-
+-->
 
 
 ## Filtering - keep only bacterial reads
@@ -178,7 +180,6 @@ Filtering bacterial reads for true sample.
 ```{r}
 p.true.filt <- subset_taxa(p.true.original, superkingdom=="Bacteria")
 p.true.filt.s <- tax_glom(p.true.filt, taxrank = "species", NArm = TRUE)
-
 rm(p.true.filt)
 ```
 
@@ -190,7 +191,7 @@ physeq.nct.filt <- subset_taxa(physeq.nct.original, superkingdom=="Bacteria")
 physeq.nct.filt.s <- tax_glom(physeq.nct.filt, taxrank = "species", NArm = TRUE)
 rm(physeq.nct.filt)
 ```
-**Further, Remove low read count NCTs**
+## Remove samples in NCT whose read counts are low
 Remove NCT samples if their readcount less than 150
 ```{r}
 bac.count.ntc <- tibble(bac.count = sample_sums(physeq.nct.filt.s), 
@@ -251,7 +252,7 @@ We follow the procudure from Nejman et al. 2020, which comprises two steps:
 Any tax which has high prevalence (>= a threshold) in NCT samples is considered as contamination. 
 First, we plot a graph to determine the cut-off of high prevalence. 
 ```{r}
-xout <- HighPrevalence_Data(p.true.RmLowAbun, physeq.nct.filt.s.prune)
+xout <- HighPrevalence_Data(p.true.RmLowAbun, physeq.nct.filt.s)
 plot(xout$factorx, xout$rel_tax, xlab="prevalence in NCT samples", ylab="proportion of tax in true samples")
 ```
 
@@ -260,8 +261,8 @@ From this plot, a threshold 0.3 would be fine.
 ```{r}
 filter <- 0.3
 filtered_taxa1 <- tibble(
-  Cont = genefilter_sample(physeq.nct.filt.s.prune, filterfun_sample(function(x) x > 0), A=filter*nsamples(physeq.nct.filt.s.prune)),
-  OTU = names(genefilter_sample(physeq.nct.filt.s.prune, filterfun_sample(function(x) x > 0), A=filter*nsamples(physeq.nct.filt.s.prune)))
+  Cont = genefilter_sample(physeq.nct.filt.s, filterfun_sample(function(x) x > 0), A=filter*nsamples(physeq.nct.filt.s)),
+  OTU = names(genefilter_sample(physeq.nct.filt.s, filterfun_sample(function(x) x > 0), A=filter*nsamples(physeq.nct.filt.s)))
 ) %>% 
   arrange (-Cont)
 
@@ -274,7 +275,7 @@ cont.count %>%
 
 And list of contaminants
 ```{r}
-df.fam.melt <- psmelt(physeq.nct.filt.s.prune)
+df.fam.melt <- psmelt(physeq.nct.filt.s)
 df.fam.melt %>% select(OTU, species) %>% 
   unique %>% 
   right_join(filtered_taxa1) %>% 
@@ -290,7 +291,7 @@ We now remove those taxa which have high prevalence in NTC samples out of true (
 ```{r}
 p.true.RmLowAbun.RmHighPrev <- prune_taxa(setdiff(rownames(otu_table(p.true.RmLowAbun)),filtered_taxa1[filtered_taxa1$Cont==TRUE,] %>% pull("OTU")), p.true.RmLowAbun)
 ```
-Now we have `r nrow(sample_data(p.true.RmLowAbun.RmHighPrev))` true samples and `r nrow(otu_table(p.true.RmLowAbun.RmHighPrev))` taxa. In NCTs, we have `r nrow(sample_data(physeq.nct.filt.s.prune))` control samples and `r nrow(otu_table(physeq.nct.filt.s.prune))` taxa
+Now we have `r nrow(sample_data(p.true.RmLowAbun.RmHighPrev))` true samples and `r nrow(otu_table(p.true.RmLowAbun.RmHighPrev))` taxa. In NCTs, we have `r nrow(sample_data(physeq.nct.filt.s.prune))` control samples and `r nrow(otu_table(physeq.nct.filt.s))` taxa
 
 Venn diagram of taxa now
 ```{r}
@@ -305,7 +306,7 @@ For those taxa whose prevalence are low in NCT samples, we apply Binomial test p
 library("readxl")
 metadata <- read_excel("../../raw_data/Metadata_2.xlsx") %>% as.data.frame()
 metadata <- metadata[,c("uniqueID", "sample_side", "sample_nr", "TRUE_control", "DNAex_round", "PCR_round")]
-physeq.comb.filt <- merge_phyloseq(p.true.RmLowAbun.RmHighPrev, physeq.nct.filt.s.prune)
+physeq.comb.filt <- merge_phyloseq(p.true.RmLowAbun.RmHighPrev, physeq.nct.filt.s)
 sample_data(physeq.comb.filt)$is.neg <- sample_data(physeq.comb.filt)$TRUE_control == "control"
 ```
 
@@ -317,6 +318,7 @@ metadata <- metadata[metadata$uniqueID %in% keep_idx,]
 metadata <- metadata %>% mutate(sample_type = ifelse(grepl("paraffin", tolower(sample_side), fixed = TRUE),"paraffin", 
                                                      ifelse(grepl("buffer", tolower(sample_side), fixed = TRUE),"buffer",
                                                     ifelse(grepl("pcr", tolower(sample_side), fixed = TRUE),"pcr_ctrl", "true_sample"))))
+rownames(metadata) <- paste(metadata$uniqueID, metadata$sample_side, sep = '.')
 
 tmp <- metadata$DNAex_round %>% as.numeric()
 DNAex_lst <- tmp[!is.na(tmp)] %>% unique()
@@ -366,34 +368,32 @@ library(doParallel)
 ```
 We apply the batch effect correction via ConQuR. First, we apply the batch correction on DNAex_round
 ```{r}
-otu = as(otu_table(p.true.RmLowAbun.RmHLPrev), "matrix")
-t_otu <- NULL
+otu = otu_table(p.true.RmLowAbun.RmHLPrev) %>% as.data.frame()
 if(taxa_are_rows(p.true.RmLowAbun.RmHLPrev)){
-  t_otu <- t(otu); 
-  rownames(t_otu) <- colnames(otu)
-  otu <- t_otu
+  otu <- t(otu)
 }
-otu <- as.data.frame(otu)
-otu$uniqueID <- lapply(otu %>% rownames(), function(x){strsplit(x,split = ".", fixed = TRUE)[[1]][1]})
-otu$uniqueID <- as.integer(otu$uniqueID)
+#otu$uniqueID <- lapply(otu %>% rownames(), function(x){strsplit(x,split = ".", fixed = TRUE)[[1]][1]})
+#otu$uniqueID <- as.integer(otu$uniqueID)
 metadata <- as.data.frame(metadata)
-otu.merge <- merge(x=otu, y=metadata[, c("uniqueID", "DNAex_round", "PCR_round")],  
-                   by.x = "uniqueID", by.y = "uniqueID", all.x = TRUE, all.y = FALSE)
+otu.merge <- merge(x=otu, y=metadata[, c("DNAex_round", "PCR_round")],  
+                   by=0, all.x = TRUE, all.y = FALSE)
 otu.merge$DNAex_round <- as.factor(otu.merge$DNAex_round)
 otu.merge$PCR_round <- as.factor(otu.merge$PCR_round)
+rownames(otu.merge) <- otu.merge$Row.names
+otu.merge <- otu.merge[,-1]
 
 batchid <- otu.merge[,"DNAex_round"]
 covar <- otu.merge[, "PCR_round"]
 batchid2 <- otu.merge[,"PCR_round"]
 covar2 <- otu.merge[, "DNAex_round"]
-taxa_tab <- otu.merge[,c(2:512)] 
+taxa_tab <- otu.merge[,c(1:511)] 
 
-taxa_corrected1 = ConQuR(tax_tab=taxa_tab, batchid=batchid, covariates=covar, batch_ref="1")
+taxa_corrected1 = ConQuR(tax_tab=taxa_tab, batchid=batchid, covariates=batchid, batch_ref="5")
 ```
 
 Then we apply on PCR_round.
 ```{r}
-taxa_corrected2 = ConQuR(tax_tab=taxa_corrected1, batchid=batchid2, covariates=covar2, batch_ref="1")
+taxa_corrected2 = ConQuR(tax_tab=taxa_corrected1, batchid=batchid2, covariates=batchid2, batch_ref="1")
 ```
 
 Illustration of batch effect correction
@@ -402,11 +402,16 @@ par(mfrow=c(2, 3))
 
 Plot_PCoA(TAX=taxa_tab, factor=batchid, main="Before Correction, Bray-Curtis")
 Plot_PCoA(TAX=taxa_corrected1, factor=batchid, main="ConQuR (Default), Bray-Curtis - DNAex_round")
-Plot_PCoA(TAX=taxa_corrected2, factor=batchid, main="ConQuR (Default), Bray-Curtis - DNAex & PCR_round")
+Plot_PCoA(TAX=taxa_corrected2, factor=batchid2, main="ConQuR (Default), Bray-Curtis - DNAex & PCR_round")
 
 Plot_PCoA(TAX=taxa_tab, factor=batchid, dissimilarity="Aitch", main="Before Correction, Aitchison")
 Plot_PCoA(TAX=taxa_corrected1, factor=batchid, dissimilarity="Aitch", main="ConQuR (Default), Aitchison - DNAex_round")
-Plot_PCoA(TAX=taxa_corrected2, factor=batchid, dissimilarity="Aitch", main="ConQuR (Default), Aitchison - DNAex & PCR_round")
+Plot_PCoA(TAX=taxa_corrected2, factor=batchid2, dissimilarity="Aitch", main="ConQuR (Default), Aitchison - DNAex & PCR_round")
+```
+
+```{r}
+tmp_phyloseq <- p.true.RmLowAbun.RmHLPrev
+otu_table(tmp_phyloseq) <- otu_table(taxa_corrected2 %>% t(), taxa_are_rows = TRUE)
 ```
 
 # Compositional Analysis
