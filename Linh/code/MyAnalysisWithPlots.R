@@ -1,6 +1,6 @@
 ## illustration with figures
 ## compositional analysis
-compositional_analysis <- function(PhyloseqObj, target_rank='order', rel_abundance=0.03){
+compositional_analysis <- function(PhyloseqObj, target_rank='order', rel_abundance=0.03, filename){
   ## PhyloseqObj: phyloseq object after filtering, decontamination and normalization
   ## target_rank: one of : order, family, genus, species
   ## rel_abundance: a threshold which less than that to be considered as 'others'.
@@ -19,12 +19,16 @@ compositional_analysis <- function(PhyloseqObj, target_rank='order', rel_abundan
   }
   
   df.fam.melt$target_rank <- factor(df.fam.melt$target_rank, levels=rev(unique(df.fam.melt$target_rank)))
-  cols <- c("#9d547c","#56ca63","#a357d6","#419d2a","#525fd6","#8cbe3a","#c944aa","#5ba557","#9e66cb","#c1b735","#6d82ec","#e69728",
-            "#6654b0","#799330","#da7fdf","#3c782c","#e44586","#63c996","#dc3f53","#49cbc8","#cf3f29","#4fabda","#da6c2b","#598bd1",
-            "#b78c24","#8d4191","#a0b971","#b2386a","#479d71","#ae4341","#2ba198","#e07557","#5361a3","#dda353","#aa98df","#5b6114",
-            "#dc89bf","#327243","#e57b94","#277257","#9b62a0","#bbab59","#98495a","#526229","#d8827d","#857624","#9a4a22","#7c7d46",
-            "#e3a073","#9e6b33")
+  # cols <- c("#9d547c","#56ca63","#a357d6","#419d2a","#525fd6","#8cbe3a","#c944aa","#5ba557","#9e66cb","#c1b735","#6d82ec","#e69728",
+  #           "#6654b0","#799330","#da7fdf","#3c782c","#e44586","#63c996","#dc3f53","#49cbc8","#cf3f29","#4fabda","#da6c2b","#598bd1",
+  #           "#b78c24","#8d4191","#a0b971","#b2386a","#479d71","#ae4341","#2ba198","#e07557","#5361a3","#dda353","#aa98df","#5b6114",
+  #           "#dc89bf","#327243","#e57b94","#277257","#9b62a0","#bbab59","#98495a","#526229","#d8827d","#857624","#9a4a22","#7c7d46",
+  #           "#e3a073","#9e6b33", "#000000")
   
+  #cols <- heat.colors((df.fam.melt$target_rank %>% unique() %>% length()), alpha = 1)
+  cols <- c(brewer.pal(11, "BrBG"), brewer.pal(11, "PiYG"), brewer.pal(11, "PRGn"), brewer.pal(11, "PuOr"),
+            brewer.pal(11, "RdBu"), brewer.pal(11, "RdGy"), brewer.pal(11, "RdYlBu"), brewer.pal(11, "RdYlGn"),
+            brewer.pal(8, "Accent"), brewer.pal(8, "Dark2"), brewer.pal(12, "Paired"))
   
   ggplot(df.fam.melt, aes(x=id, y=Abundance, fill=target_rank)) +
     geom_bar(stat="identity") +
@@ -39,8 +43,21 @@ compositional_analysis <- function(PhyloseqObj, target_rank='order', rel_abundan
            axis.title = element_text(size=14, face="bold"))+
     theme(legend.position = "bottom",
           legend.title = element_blank(),
-          legend.background = element_rect(size=0.25, linetype="solid", colour ="black"),
-          legend.key.size = unit(4,"mm"))
+          legend.background = element_rect(size=0.4, linetype="solid", colour ="black"),
+          legend.key.size = unit(6,"mm")) 
+    
+  ggsave(
+      filename,
+      #plot = last_plot(),
+      #path = NULL,
+      scale = 1,
+      width = 15,
+      height = 7.5,
+      #units = c("in", "cm", "mm", "px"),
+      units = "in",
+      dpi = 300,
+      limitsize = TRUE
+    )
 }
 ##------------------------------------------------------
 ## Alpha analysis
@@ -179,4 +196,25 @@ Inspect_taxa_Species <- function(PhyseqObj, capstr){
     kable_classic(full_width = F, html_font = "Cambria") %>%
     kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive")) %>% 
     scroll_box(width = "70%", height = "600px")
+}
+
+##----------------------
+## ConQuR --> plot PCoA for a Phyloseq object
+My_Plot_PCoA <- function(True.Sample, metadata, batchName, caption){
+  otu = otu_table(True.Sample) %>% as.data.frame()
+  if(taxa_are_rows(True.Sample)){
+    otu <- t(otu)
+  }
+  metadata <- as.data.frame(metadata)
+  sub_metadata <- metadata[, batchName, drop = FALSE]
+  otu.merge <- merge(x=otu, y=sub_metadata,  
+                     by=0, all.x = TRUE, all.y = FALSE)
+  otu.merge[, batchName] <- as.factor(otu.merge[, batchName])
+  rownames(otu.merge) <- otu.merge$Row.names
+  otu.merge <- otu.merge[,-1]
+  
+  batchid <- otu.merge[,batchName]
+  taxa_tab <- otu.merge[,c(1:(taxa_names(True.Sample) %>% length()))]
+  
+  Plot_PCoA(TAX=taxa_tab, factor=batchid, main=caption)
 }

@@ -170,21 +170,25 @@ Wrapper_filter_by_low_prevalence <- function(True.Sample, NCT.Sample, metadata){
   return(prune_taxa(keep_taxa, p.true.RmLowAbun.RmHighPrev))
 }
 ##-------------------------------------------------------------
-ConQur_apply <- function(True.Sample, metadata, batchName, batch_ref){
+ConQur_apply <- function(True.Sample, metadata, batchName, batch_covar, batch_ref){
   otu = otu_table(True.Sample) %>% as.data.frame()
   if(taxa_are_rows(True.Sample)){
     otu <- t(otu)
   }
   metadata <- as.data.frame(metadata)
-  otu.merge <- merge(x=otu, y=metadata[, batchName],  
+  keep_names <- c(batchName,batch_covar)
+  keep_names <- keep_names[!duplicated(keep_names)]
+  otu.merge <- merge(x=otu, y=metadata[, keep_names, drop = FALSE],  
                      by=0, all.x = TRUE, all.y = FALSE)
   otu.merge[,batchName] <- as.factor(otu.merge[,batchName])
+  otu.merge[,batch_covar] <- as.factor(otu.merge[,batch_covar])
   rownames(otu.merge) <- otu.merge$Row.names
   otu.merge <- otu.merge[,-1]
   
   batchid <- otu.merge[,batchName]
-  covar <- otu.merge[, batchName]
+  covar <- otu.merge[, batch_covar]
   taxa_tab <- otu.merge[,c(1:(taxa_names(True.Sample) %>% length()))]
+  ##------------
   taxa_corrected = ConQuR(tax_tab=taxa_tab, batchid=batchid, covariates=covar, batch_ref=batch_ref)
   tmp_Sample <- True.Sample
   otu_table(tmp_Sample) <- otu_table(taxa_corrected %>% t(), taxa_are_rows = TRUE)
@@ -201,5 +205,17 @@ Subtract_Species <- function(Sample1, Sample2){
   )
   return(prune_taxa(set_diff, Sample1))
 }
+##-----------------------------------
+## Inspect sequencing depth
+Inspect_SequencingDepth <- function(PhyloObj){
+  bac.count <- as_tibble(colSums(as.data.frame(otu_table(PhyloObj))))%>% mutate (id=sample_data(PhyloObj)$id)
+  bac.count %>% 
+    arrange(value) %>% 
+    kable (caption="Bacterial reads", booktabs =TRUE) %>%
+    kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive")) %>% 
+    kable_classic(full_width = F, html_font = "Cambria") %>%
+    scroll_box(width = "100%", height = "600px")
+}
+
 
 

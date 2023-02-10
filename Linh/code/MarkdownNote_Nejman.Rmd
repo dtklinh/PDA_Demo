@@ -32,9 +32,11 @@ library(ggrepel)
 library(ggpubr) # for manual p-value assigning
 library(rstatix) # for wilcox test
 library(VennDiagram)
+library(RColorBrewer) ## colors for composition analysis
 ```
 
 ```{r, echo=FALSE}
+## adding functions
 source("./MyFunctions.R")
 source("./MyAnalysisWithPlots.R")
 ```
@@ -78,8 +80,6 @@ p.true.original <- merge_phyloseq(p.true.original,physeq5)
 
 ## clean objects
 rm(list = c("physeq1", "physeq2", "physeq3", "physeq4", "physeq5"))
-# sample_data(physeq)
-
 ```
 Now in true samples, we have:
 ```{r}
@@ -239,10 +239,10 @@ PlotVenn2Sets(row.names(otu_table(p.true.RmLowAbun)) %>% unique(),
               "True Samples" , "NCT Samples ")
 ```
 
-There are `r setdiff(rownames(otu_table(physeq.nct.filt.s)), rownames(otu_table(p.true.RmLowAbun))) %>% length()` taxa belong to NCT samples but not in true samples (after PERfect). They are obvious contamination. Thus we prune them from NCT samples
-```{r}
-set_taxa_intersect_nct <-  intersect(row.names(otu_table(p.true.RmLowAbun)) %>% unique(), row.names(otu_table(physeq.nct.filt.s)) %>% unique())
-physeq.nct.filt.s.prune <- prune_taxa(set_taxa_intersect_nct, physeq.nct.filt.s)
+There are `r setdiff(rownames(otu_table(physeq.nct.filt.s)), rownames(otu_table(p.true.RmLowAbun))) %>% length()` taxa belong to NCT samples but not in true samples (after PERfect). They are obvious contamination. <!--- Thus we prune them from NCT samples -->
+```{r, echo=F}
+#set_taxa_intersect_nct <-  intersect(row.names(otu_table(p.true.RmLowAbun)) %>% unique(), row.names(otu_table(physeq.nct.filt.s)) %>% unique())
+#physeq.nct.filt.s.prune <- prune_taxa(set_taxa_intersect_nct, physeq.nct.filt.s)
 ```
 
 ## Filtering by Prevalence
@@ -273,7 +273,7 @@ cont.count %>%
   kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive")) 
 ```
 
-And list of contaminants
+This is a list of contaminants determined by high prevalence in NCTs (threhold 0.3)
 ```{r}
 df.fam.melt <- psmelt(physeq.nct.filt.s)
 df.fam.melt %>% select(OTU, species) %>% 
@@ -287,7 +287,7 @@ df.fam.melt %>% select(OTU, species) %>%
   scroll_box(width = "70%", height = "600px")
 ```
 
-We now remove those taxa which have high prevalence in NTC samples out of true (and NTC) samples.
+We now remove those taxa which have high prevalence in NTC samples out of true samples.
 ```{r}
 p.true.RmLowAbun.RmHighPrev <- prune_taxa(setdiff(rownames(otu_table(p.true.RmLowAbun)),filtered_taxa1[filtered_taxa1$Cont==TRUE,] %>% pull("OTU")), p.true.RmLowAbun)
 ```
@@ -356,7 +356,7 @@ physeq.nct.NotCont <- prune_taxa(intersect(physeq.nct.filt.s %>% otu_table() %>%
 Inspect_taxa_Species(physeq.nct.NotCont, "In NCTs but not contaminants")
 ```
 
-Batch effect correction via ConQuR
+#Batch effect correction via ConQuR
 Install ConQuR
 
 ```{r, echo=FALSE}
@@ -367,6 +367,17 @@ library(ConQuR)
 library(doParallel)
 ```
 We apply the batch effect correction via ConQuR. First, we apply the batch correction on DNAex_round
+
+```{r}
+p.true.RmLowAbun.RmHLPrev.batchDNA <- ConQur_apply(p.true.RmLowAbun.RmHLPrev, metadata, "DNAex_round","DNAex_round", "5")
+```
+
+Second, we apply the batch correction on PCR_round
+```{r}
+p.true.RmLowAbun.RmHLPrev.batchDNA_PCR <- ConQur_apply(p.true.RmLowAbun.RmHLPrev.batchDNA, metadata, "PCR_round", "PCR_round", "1")
+```
+
+<!---
 ```{r}
 otu = otu_table(p.true.RmLowAbun.RmHLPrev) %>% as.data.frame()
 if(taxa_are_rows(p.true.RmLowAbun.RmHLPrev)){
@@ -398,27 +409,97 @@ taxa_corrected2 = ConQuR(tax_tab=taxa_corrected1, batchid=batchid2, covariates=b
 
 Illustration of batch effect correction
 ```{r}
-par(mfrow=c(2, 3))
+par(mfrow=c(1, 3))
 
 Plot_PCoA(TAX=taxa_tab, factor=batchid, main="Before Correction, Bray-Curtis")
 Plot_PCoA(TAX=taxa_corrected1, factor=batchid, main="ConQuR (Default), Bray-Curtis - DNAex_round")
 Plot_PCoA(TAX=taxa_corrected2, factor=batchid2, main="ConQuR (Default), Bray-Curtis - DNAex & PCR_round")
 
-Plot_PCoA(TAX=taxa_tab, factor=batchid, dissimilarity="Aitch", main="Before Correction, Aitchison")
-Plot_PCoA(TAX=taxa_corrected1, factor=batchid, dissimilarity="Aitch", main="ConQuR (Default), Aitchison - DNAex_round")
-Plot_PCoA(TAX=taxa_corrected2, factor=batchid2, dissimilarity="Aitch", main="ConQuR (Default), Aitchison - DNAex & PCR_round")
+#Plot_PCoA(TAX=taxa_tab, factor=batchid, dissimilarity="Aitch", main="Before Correction, Aitchison")
+#Plot_PCoA(TAX=taxa_corrected1, factor=batchid, dissimilarity="Aitch", main="ConQuR (Default), Aitchison - DNAex_round")
+#Plot_PCoA(TAX=taxa_corrected2, factor=batchid2, dissimilarity="Aitch", main="ConQuR (Default), Aitchison - DNAex & PCR_round")
 ```
-
+-->
+Visually validate the batch effect before and after applying ConQuR
 ```{r}
-tmp_phyloseq <- p.true.RmLowAbun.RmHLPrev
-otu_table(tmp_phyloseq) <- otu_table(taxa_corrected2 %>% t(), taxa_are_rows = TRUE)
+
+par(mfrow=c(1, 3))
+
+My_Plot_PCoA(p.true.RmLowAbun.RmHLPrev, metadata, "DNAex_round", "Before Correction, Bray-Curtis")
+My_Plot_PCoA(p.true.RmLowAbun.RmHLPrev.batchDNA, metadata, "DNAex_round", "ConQuR (Default), Bray-Curtis - DNAex_round")
+My_Plot_PCoA(p.true.RmLowAbun.RmHLPrev.batchDNA_PCR, metadata, "DNAex_round", "ConQuR (Default), Aitchison - DNAex & PCR_round")
+# Plot_PCoA(TAX=p.true.RmLowAbun.RmHLPrev %>% otu_table() %>% t(), factor=batchid, main="Before Correction, Bray-Curtis")
+# Plot_PCoA(TAX=tmp_phyloseq %>% otu_table() %>% t(), factor=batchid, main="ConQuR (Default), Bray-Curtis - DNAex_round")
 ```
 
 # Compositional Analysis
+In this section, we conduct three different composition analyses, in order to illustrate the importance of removing contaminants. 
+M1. True samples after removing contaminants
+    All above filtering steps, after that apply ConQuR for batch effect correction and normalizing by rarefication. 
+M2. True samples, yet simply subtract all species occur in NCTs. 
+    Remove low abundant species by Perfect package, after that apply ConQuR for batch effect correction and normalizing by rarefication.
+M3. Original true samples
+    Remove low abundant species by Perfect package, after that apply ConQuR for batch effect correction and normalizing by rarefication.
+## True samples after removing contaminants
+First of all, we have a look at bacterial reads of each sample
+```{r}
+Inspect_SequencingDepth(physeq.M1.rar)
+```
+
+Normalizing via rarefying
+```{r}
+## rarifying
+sample.size <- 350
+seed <- 911
+physeq.M1.rar <- rarefy_even_depth(physeq = p.true.RmLowAbun.RmHLPrev.batchDNA_PCR, sample.size = sample.size, rngseed = seed)
+tab <- p.true.original %>% otu_table() 
+class(tab) <- "matrix"
+rarecurve(tab %>% t(), step=50, cex=0.5)
+```
+Composition analysis
+```{r}
+compositional_analysis(physeq.M1.rar,"species", 0.04, "M1.pdf")
+```
+
+## True samples subtracting all species in NCTs
+From the original true samples, we simply remove all taxas occured in NCTs. Afterwards, we remove all taxa with low abundance
+```{r}
+keep_taxa <- setdiff(p.true.filt.s %>% otu_table() %>% rownames(), physeq.nct.filt.s %>% otu_table() %>% rownames())
+physeq.M2 <- prune_taxa(keep_taxa, p.true.filt.s)
+## remove taxa with low abundant by Perfect package
+physeq.M2 <- Wrapper_FERfect(physeq.M2)
+```
+Next, we apply ConQuR to correct the batch effect
+```{r}
+physeq.M2.ConQuR_DNAex <- ConQur_apply(physeq.M2, metadata, "DNAex_round", "DNAex_round", 5)
+par(mfrow=c(1, 2))
+My_Plot_PCoA(True.Sample = physeq.M2, metadata, "DNAex_round", "Before")
+My_Plot_PCoA(True.Sample = physeq.M2.ConQuR_DNAex, metadata, "DNAex_round", "After")
+```
+
+Next, we have a look at bacterial reads of each sample
+```{r}
+Inspect_SequencingDepth(physeq.M2.ConQuR_DNAex)
+```
+
+Normalizing via rarefying
+```{r}
+## rarifying
+sample.size <- 300
+seed <- 911
+physeq.M2.rar <- rarefy_even_depth(physeq = physeq.M2.ConQuR_DNAex, sample.size = sample.size, rngseed = seed)
+tab <- physeq.M2.ConQuR_DNAex %>% otu_table() 
+class(tab) <- "matrix"
+rarecurve(tab %>% t(), step=50, cex=0.5)
+```
+Composition analysis
+```{r}
+compositional_analysis(physeq.M2.rar,"species", 0.04)
+```
 ## Original true sample without any filtering
 ```{r}
 
-compositional_analysis(p.true.original, target_rank = "species", rel_abundance = 0.03)
+
 ```
 
 <!---

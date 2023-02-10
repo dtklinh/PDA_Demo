@@ -1,0 +1,1442 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en"><head>
+
+<meta charset="utf-8">
+<meta name="generator" content="quarto-1.2.269">
+
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+
+<meta name="author" content="Nina &amp; Christoph, adapted by Linh">
+<meta name="dcterms.date" content="2023-02-09">
+
+<title>Pipeline_StreamLine</title>
+<style>
+code{white-space: pre-wrap;}
+span.smallcaps{font-variant: small-caps;}
+div.columns{display: flex; gap: min(4vw, 1.5em);}
+div.column{flex: auto; overflow-x: auto;}
+div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+ul.task-list{list-style: none;}
+ul.task-list li input[type="checkbox"] {
+  width: 0.8em;
+  margin: 0 0.8em 0.2em -1.6em;
+  vertical-align: middle;
+}
+pre > code.sourceCode { white-space: pre; position: relative; }
+pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }
+pre > code.sourceCode > span:empty { height: 1.2em; }
+.sourceCode { overflow: visible; }
+code.sourceCode > span { color: inherit; text-decoration: inherit; }
+div.sourceCode { margin: 1em 0; }
+pre.sourceCode { margin: 0; }
+@media screen {
+div.sourceCode { overflow: auto; }
+}
+@media print {
+pre > code.sourceCode { white-space: pre-wrap; }
+pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
+}
+pre.numberSource code
+  { counter-reset: source-line 0; }
+pre.numberSource code > span
+  { position: relative; left: -4em; counter-increment: source-line; }
+pre.numberSource code > span > a:first-child::before
+  { content: counter(source-line);
+    position: relative; left: -1em; text-align: right; vertical-align: baseline;
+    border: none; display: inline-block;
+    -webkit-touch-callout: none; -webkit-user-select: none;
+    -khtml-user-select: none; -moz-user-select: none;
+    -ms-user-select: none; user-select: none;
+    padding: 0 4px; width: 4em;
+    color: #aaaaaa;
+  }
+pre.numberSource { margin-left: 3em; border-left: 1px solid #aaaaaa;  padding-left: 4px; }
+div.sourceCode
+  {   }
+@media screen {
+pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
+}
+code span.al { color: #ff0000; font-weight: bold; } /* Alert */
+code span.an { color: #60a0b0; font-weight: bold; font-style: italic; } /* Annotation */
+code span.at { color: #7d9029; } /* Attribute */
+code span.bn { color: #40a070; } /* BaseN */
+code span.bu { color: #008000; } /* BuiltIn */
+code span.cf { color: #007020; font-weight: bold; } /* ControlFlow */
+code span.ch { color: #4070a0; } /* Char */
+code span.cn { color: #880000; } /* Constant */
+code span.co { color: #60a0b0; font-style: italic; } /* Comment */
+code span.cv { color: #60a0b0; font-weight: bold; font-style: italic; } /* CommentVar */
+code span.do { color: #ba2121; font-style: italic; } /* Documentation */
+code span.dt { color: #902000; } /* DataType */
+code span.dv { color: #40a070; } /* DecVal */
+code span.er { color: #ff0000; font-weight: bold; } /* Error */
+code span.ex { } /* Extension */
+code span.fl { color: #40a070; } /* Float */
+code span.fu { color: #06287e; } /* Function */
+code span.im { color: #008000; font-weight: bold; } /* Import */
+code span.in { color: #60a0b0; font-weight: bold; font-style: italic; } /* Information */
+code span.kw { color: #007020; font-weight: bold; } /* Keyword */
+code span.op { color: #666666; } /* Operator */
+code span.ot { color: #007020; } /* Other */
+code span.pp { color: #bc7a00; } /* Preprocessor */
+code span.sc { color: #4070a0; } /* SpecialChar */
+code span.ss { color: #bb6688; } /* SpecialString */
+code span.st { color: #4070a0; } /* String */
+code span.va { color: #19177c; } /* Variable */
+code span.vs { color: #4070a0; } /* VerbatimString */
+code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warning */
+</style>
+
+
+<script src="Pipeline_StreamLine_files/libs/clipboard/clipboard.min.js"></script>
+<script src="Pipeline_StreamLine_files/libs/quarto-html/quarto.js"></script>
+<script src="Pipeline_StreamLine_files/libs/quarto-html/popper.min.js"></script>
+<script src="Pipeline_StreamLine_files/libs/quarto-html/tippy.umd.min.js"></script>
+<script src="Pipeline_StreamLine_files/libs/quarto-html/anchor.min.js"></script>
+<link href="Pipeline_StreamLine_files/libs/quarto-html/tippy.css" rel="stylesheet">
+<link href="Pipeline_StreamLine_files/libs/quarto-html/quarto-syntax-highlighting.css" rel="stylesheet" id="quarto-text-highlighting-styles">
+<script src="Pipeline_StreamLine_files/libs/bootstrap/bootstrap.min.js"></script>
+<link href="Pipeline_StreamLine_files/libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
+<link href="Pipeline_StreamLine_files/libs/bootstrap/bootstrap.min.css" rel="stylesheet" id="quarto-bootstrap" data-mode="light">
+
+<script src="Pipeline_StreamLine_files/libs/kePrint-0.0.1/kePrint.js"></script>
+<link href="Pipeline_StreamLine_files/libs/lightable-0.0.1/lightable.css" rel="stylesheet">
+
+
+</head>
+
+<body class="fullcontent">
+
+<div id="quarto-content" class="page-columns page-rows-contents page-layout-article">
+
+<main class="content" id="quarto-document-content">
+
+<header id="title-block-header" class="quarto-title-block default">
+<div class="quarto-title">
+<h1 class="title">Pipeline_StreamLine</h1>
+</div>
+
+
+
+<div class="quarto-title-meta">
+
+    <div>
+    <div class="quarto-title-meta-heading">Author</div>
+    <div class="quarto-title-meta-contents">
+             <p>Nina &amp; Christoph, adapted by Linh </p>
+          </div>
+  </div>
+    
+    <div>
+    <div class="quarto-title-meta-heading">Published</div>
+    <div class="quarto-title-meta-contents">
+      <p class="date">February 9, 2023</p>
+    </div>
+  </div>
+  
+    
+  </div>
+  
+
+</header>
+
+<section id="summary" class="level1">
+<h1>Summary</h1>
+<p>In this experiment, human tumor vs.&nbsp;normal pancreas FFPE tissue samples from the Pathology department are examined. The DNA had been isolated with the Invitrogen FFPE kit (by me). The sample size is n=24 for both tumor and normal pancreas (matched patients). Additionally, n=6 FFPE tumor tissue samples from the establishment experiment (patho_ffpe_self) without matched normal pancreas tissue are implemented (so we have n=30 tumor, n=24 normal pancreas). n=75 NTCs (n=23 paraffin tumor, n=24 paraffin normal, n=10 buffer-only, n=7 PCR CTRLs) plus n=11 NTCs from the establishment experiment (patho_ffpe_self) are implemented.</p>
+<div class="cell">
+
+</div>
+<div class="cell">
+<details>
+<summary>Code</summary>
+<div class="sourceCode cell-code" id="cb1"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="do">## adding functions</span></span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="fu">source</span>(<span class="st">"./MyFunctions.R"</span>)</span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a><span class="fu">source</span>(<span class="st">"./MyAnalysisWithPlots.R"</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
+</div>
+</section>
+<section id="the-pipeline" class="level1">
+<h1>The Pipeline</h1>
+<section id="prepare-materials-for-the-pipeline" class="level2">
+<h2 class="anchored" data-anchor-id="prepare-materials-for-the-pipeline">Prepare materials for the pipeline</h2>
+<section id="loading-true-samples" class="level3">
+<h3 class="anchored" data-anchor-id="loading-true-samples">Loading true samples</h3>
+<div class="cell">
+<details>
+<summary>Code</summary>
+<div class="sourceCode cell-code" id="cb2"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a>Path2PhyloSeqObj <span class="ot">&lt;-</span> <span class="st">"../../raw_data/PhyloSeqObj_2/"</span></span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a>physeq1 <span class="ot">&lt;-</span> <span class="fu">readRDS</span>(<span class="fu">paste0</span>(Path2PhyloSeqObj,<span class="st">"2022_05_27_patho_FFPE_tum_panc_1/physeq_original_1500.80.rds"</span>))</span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a>physeq2 <span class="ot">&lt;-</span> <span class="fu">readRDS</span>(<span class="fu">paste0</span>(Path2PhyloSeqObj,<span class="st">"2022_05_27_patho_FFPE_tum_panc_2/physeq_original_1500.80.rds"</span>))</span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a>physeq3 <span class="ot">&lt;-</span> <span class="fu">readRDS</span>(<span class="fu">paste0</span>(Path2PhyloSeqObj,<span class="st">"2022_05_28_patho_FFPE_tum_panc_3/physeq_original_1500.80.rds"</span>))</span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a>physeq4 <span class="ot">&lt;-</span> <span class="fu">readRDS</span>(<span class="fu">paste0</span>(Path2PhyloSeqObj,<span class="st">"2022_05_28_patho_FFPE_tum_panc_4/physeq_original_1500.80.rds"</span>))</span>
+<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a>physeq5 <span class="ot">&lt;-</span> <span class="fu">readRDS</span>(<span class="fu">paste0</span>(Path2PhyloSeqObj,<span class="st">"2021_12_01_patho_FFPE_self_tumor/physeq_original_1500.80.rds"</span>))</span>
+<span id="cb2-7"><a href="#cb2-7" aria-hidden="true" tabindex="-1"></a><span class="co">#physeq5sub &lt;- subset_samples(physeq5, sample_nr!="P19269-20" &amp; sample_nr!="P15970-20" &amp; sample_nr!="P12758-20" &amp; sample_nr!="P3434-20")</span></span>
+<span id="cb2-8"><a href="#cb2-8" aria-hidden="true" tabindex="-1"></a>p.true.original <span class="ot">&lt;-</span> <span class="fu">merge_phyloseq</span>(physeq1,physeq2,physeq3,physeq4, physeq5)</span>
+<span id="cb2-9"><a href="#cb2-9" aria-hidden="true" tabindex="-1"></a><span class="do">## clean objects</span></span>
+<span id="cb2-10"><a href="#cb2-10" aria-hidden="true" tabindex="-1"></a><span class="fu">rm</span>(<span class="at">list =</span> <span class="fu">c</span>(<span class="st">"physeq1"</span>, <span class="st">"physeq2"</span>, <span class="st">"physeq3"</span>, <span class="st">"physeq4"</span>, <span class="st">"physeq5"</span>))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
+</div>
+<p>Now in true samples, we have:</p>
+<div class="cell">
+<details>
+<summary>Code</summary>
+<div class="sourceCode cell-code" id="cb3"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a>p.true.original <span class="sc">%&gt;%</span> <span class="fu">sample_data</span>() <span class="sc">%&gt;%</span> <span class="fu">pull</span>(sample_side) <span class="sc">%&gt;%</span> <span class="fu">table</span>()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
+<div class="cell-output cell-output-stdout">
+<pre><code>.
+normal  tumor 
+    24     34 </code></pre>
+</div>
+</div>
+<p>We have <strong>58</strong> true samples and <strong>1679</strong> taxa.</p>
+</section>
+<section id="loading-ncts" class="level3">
+<h3 class="anchored" data-anchor-id="loading-ncts">Loading NCTs</h3>
+<div class="cell">
+<details>
+<summary>Code</summary>
+<div class="sourceCode cell-code" id="cb5"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a>physeq.nct1 <span class="ot">&lt;-</span> <span class="fu">readRDS</span>(<span class="fu">paste0</span>(Path2PhyloSeqObj,<span class="st">"2022_06_02_patho_FFPE_tum_panc_ntc_1/physeq_original_1500.80.rds"</span>))</span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a>physeq.nct2 <span class="ot">&lt;-</span> <span class="fu">readRDS</span>(<span class="fu">paste0</span>(Path2PhyloSeqObj,<span class="st">"2022_06_02_patho_FFPE_tum_panc_ntc_2/physeq_original_1500.80.rds"</span>))</span>
+<span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a>physeq.nct3 <span class="ot">&lt;-</span> <span class="fu">readRDS</span>(<span class="fu">paste0</span>(Path2PhyloSeqObj,<span class="st">"2022_06_03_patho_FFPE_tum_panc_ntc_3/physeq_original_1500.80.rds"</span>))</span>
+<span id="cb5-4"><a href="#cb5-4" aria-hidden="true" tabindex="-1"></a>physeq.nct4 <span class="ot">&lt;-</span> <span class="fu">readRDS</span>(<span class="fu">paste0</span>(Path2PhyloSeqObj,<span class="st">"2022_06_03_patho_FFPE_tum_panc_ntc_4/physeq_original_1500.80.rds"</span>))</span>
+<span id="cb5-5"><a href="#cb5-5" aria-hidden="true" tabindex="-1"></a>physeq.nct5 <span class="ot">&lt;-</span> <span class="fu">readRDS</span>(<span class="fu">paste0</span>(Path2PhyloSeqObj,<span class="st">"2022_06_04_patho_FFPE_tum_panc_ntc_5/physeq_original_1500.80.rds"</span>))</span>
+<span id="cb5-6"><a href="#cb5-6" aria-hidden="true" tabindex="-1"></a>physeq.nct6 <span class="ot">&lt;-</span> <span class="fu">readRDS</span>(<span class="fu">paste0</span>(Path2PhyloSeqObj,<span class="st">"2022_06_04_patho_FFPE_tum_panc_ntc_6/physeq_original_1500.80.rds"</span>))</span>
+<span id="cb5-7"><a href="#cb5-7" aria-hidden="true" tabindex="-1"></a>physeq.nct7 <span class="ot">&lt;-</span> <span class="fu">readRDS</span>(<span class="fu">paste0</span>(Path2PhyloSeqObj,<span class="st">"2022_06_10_patho_FFPE_tum_panc_ntc_7/physeq_original_1500.80.rds"</span>))</span>
+<span id="cb5-8"><a href="#cb5-8" aria-hidden="true" tabindex="-1"></a>physeq.nct8 <span class="ot">&lt;-</span> <span class="fu">readRDS</span>(<span class="fu">paste0</span>(Path2PhyloSeqObj,<span class="st">"2022_07_13_patho_FFPE_tum_panc_ntc_8/physeq_original_1500.80.rds"</span>))</span>
+<span id="cb5-9"><a href="#cb5-9" aria-hidden="true" tabindex="-1"></a>physeq.nct9 <span class="ot">&lt;-</span> <span class="fu">readRDS</span>(<span class="fu">paste0</span>(Path2PhyloSeqObj,<span class="st">"2022_07_13_patho_FFPE_tum_panc_ntc_9/physeq_original_1500.80.rds"</span>))</span>
+<span id="cb5-10"><a href="#cb5-10" aria-hidden="true" tabindex="-1"></a>physeq.nct10 <span class="ot">&lt;-</span> <span class="fu">readRDS</span>(<span class="fu">paste0</span>(Path2PhyloSeqObj,<span class="st">"2021_12_02_patho_FFPE_self_ntc/physeq_original_1500.80.rds"</span>))</span>
+<span id="cb5-11"><a href="#cb5-11" aria-hidden="true" tabindex="-1"></a>physeq.nct11 <span class="ot">&lt;-</span> <span class="fu">readRDS</span>(<span class="fu">paste0</span>(Path2PhyloSeqObj,<span class="st">"2022_01_24_patho_FFPE_self_ntc_2/physeq_original_1500.80.rds"</span>))</span>
+<span id="cb5-12"><a href="#cb5-12" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb5-13"><a href="#cb5-13" aria-hidden="true" tabindex="-1"></a>physeq.nct.original <span class="ot">&lt;-</span> <span class="fu">merge_phyloseq</span>(physeq.nct1, physeq.nct2, physeq.nct3, physeq.nct4, physeq.nct5, physeq.nct6, physeq.nct7, physeq.nct8, physeq.nct9, physeq.nct10, physeq.nct11)</span>
+<span id="cb5-14"><a href="#cb5-14" aria-hidden="true" tabindex="-1"></a><span class="do">## clean up</span></span>
+<span id="cb5-15"><a href="#cb5-15" aria-hidden="true" tabindex="-1"></a><span class="fu">rm</span>(<span class="at">list =</span> <span class="fu">c</span>(<span class="st">'physeq.nct1'</span>, <span class="st">'physeq.nct2'</span>, <span class="st">'physeq.nct3'</span>, <span class="st">'physeq.nct4'</span>, <span class="st">'physeq.nct5'</span>,</span>
+<span id="cb5-16"><a href="#cb5-16" aria-hidden="true" tabindex="-1"></a>            <span class="st">'physeq.nct6'</span>, <span class="st">'physeq.nct7'</span>, <span class="st">'physeq.nct8'</span>, <span class="st">'physeq.nct9'</span>, <span class="st">'physeq.nct10'</span>, <span class="st">'physeq.nct11'</span>))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
+</div>
+<p>Now, in NCT samples, we have:</p>
+<div class="cell">
+<details>
+<summary>Code</summary>
+<div class="sourceCode cell-code" id="cb6"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a>physeq.nct.original <span class="sc">%&gt;%</span> <span class="fu">sample_data</span>() <span class="sc">%&gt;%</span> <span class="fu">pull</span>(sample_side) <span class="sc">%&gt;%</span> <span class="fu">table</span>()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
+<div class="cell-output cell-output-stdout">
+<pre><code>.
+         buffer        paraffin paraffin_normal  paraffin_tumor    PCR_ctrl_H2O 
+             12               9              24              23               7 </code></pre>
+</div>
+</div>
+<p>Those NCTs comprises of <strong>75</strong> samples and <strong>1101</strong> taxas.</p>
+</section>
+</section>
+<section id="curating-data" class="level2">
+<h2 class="anchored" data-anchor-id="curating-data">Curating Data</h2>
+<p>Before the actual analyses, we need to filter taxas, in order to remove less significant taxas and contaminants.</p>
+<section id="overview" class="level3">
+<h3 class="anchored" data-anchor-id="overview">Overview</h3>
+<p>The protocol is as follows:</p>
+<ol type="1">
+<li><p>Filtering for bacterial reads</p></li>
+<li><p>Deleting all taxIDs without resolution to species level, and combine different taxa_ids which belong to the same species (tax_glom)</p></li>
+<li><p>Filtering low abundance taxa in true samples, by <strong>either</strong> one of the methods:</p>
+<ol type="1">
+<li><p>Abundance filtering by PERfect package. (⚑)</p></li>
+<li><p>Nejman et al.&nbsp;any taxa whose abundance below 10^-4 and prevalence less than 20% is removed.</p></li>
+</ol></li>
+<li><p><span style="color:red;">Filtering taxas based on their prevalence in NCTs. Utilizing <strong>either</strong> one of the following:</span></p>
+<ol type="1">
+<li><p><span style="color:red;">Decontam R package</span></p></li>
+<li><p><span style="color:red;">Nejman et al.&nbsp;(2020) procedure (⚑), including:</span></p>
+<ol type="1">
+<li><p><span style="color:red;">For the taxas whose prevalence in NCTs are high, consider them as contaminants. The threshold is determined by the plot (30%).</span></p></li>
+<li><p><span style="color:red;">For the taxas whose prevalence in NCTs are low, for each of those taxas, we apply Binomial test (one-sided, per condition, and per batch). All taxas whose p-values are greater than 0.05 are removed.</span></p></li>
+</ol></li>
+</ol></li>
+<li><p>Batch effect correction (inter-batches) by ConQuR</p></li>
+<li><p>Normalization by rarefaction (vegan + phyloseq packages)</p></li>
+</ol>
+</section>
+<section id="keep-only-bacterial-reads-step-12" class="level3">
+<h3 class="anchored" data-anchor-id="keep-only-bacterial-reads-step-12">Keep only bacterial reads (Step 1+2)</h3>
+<p>We keep only bacterial reads with resolution to species</p>
+<div class="cell">
+<details>
+<summary>Code</summary>
+<div class="sourceCode cell-code" id="cb8"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a><span class="do">## for true samples</span></span>
+<span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a>p.true.filt <span class="ot">&lt;-</span> <span class="fu">subset_taxa</span>(p.true.original, superkingdom<span class="sc">==</span><span class="st">"Bacteria"</span>)</span>
+<span id="cb8-3"><a href="#cb8-3" aria-hidden="true" tabindex="-1"></a>p.true.filt.s <span class="ot">&lt;-</span> <span class="fu">tax_glom</span>(p.true.filt, <span class="at">taxrank =</span> <span class="st">"species"</span>, <span class="at">NArm =</span> <span class="cn">TRUE</span>)</span>
+<span id="cb8-4"><a href="#cb8-4" aria-hidden="true" tabindex="-1"></a><span class="fu">rm</span>(p.true.filt)</span>
+<span id="cb8-5"><a href="#cb8-5" aria-hidden="true" tabindex="-1"></a><span class="do">## for NCTs</span></span>
+<span id="cb8-6"><a href="#cb8-6" aria-hidden="true" tabindex="-1"></a>physeq.nct.filt <span class="ot">&lt;-</span> <span class="fu">subset_taxa</span>(physeq.nct.original, superkingdom<span class="sc">==</span><span class="st">"Bacteria"</span>)</span>
+<span id="cb8-7"><a href="#cb8-7" aria-hidden="true" tabindex="-1"></a>physeq.nct.filt.s <span class="ot">&lt;-</span> <span class="fu">tax_glom</span>(physeq.nct.filt, <span class="at">taxrank =</span> <span class="st">"species"</span>, <span class="at">NArm =</span> <span class="cn">TRUE</span>)</span>
+<span id="cb8-8"><a href="#cb8-8" aria-hidden="true" tabindex="-1"></a><span class="fu">rm</span>(physeq.nct.filt)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
+</div>
+<p>Now in true sample, we have <strong><em>58</em></strong> samples and <strong><em>880</em></strong> taxa. In the NCTs, we have <strong><em>75</em></strong> samples and <strong><em>586</em></strong> taxa.</p>
+</section>
+<section id="low-abundance-filtering-step-3" class="level3">
+<h3 class="anchored" data-anchor-id="low-abundance-filtering-step-3">Low abundance filtering (Step 3)</h3>
+<p>In this step, we remove all taxas in true samples whose abundance are low (eg. &lt;10^-4) and prevalence are low (eg. &lt;20%). We simply apply PERfect package.</p>
+<div class="cell">
+<details>
+<summary>Code</summary>
+<div class="sourceCode cell-code" id="cb9"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a>p.true.RmLowAbun <span class="ot">&lt;-</span> <span class="fu">Wrapper_FERfect</span>(p.true.filt.s)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
+</div>
+<p>Now we have <strong><em>58</em></strong> samples and <strong><em>840</em></strong> taxa.</p>
+</section>
+<section id="filtering-taxas-by-their-prevalence-in-ncts-step-4" class="level3">
+<h3 class="anchored" data-anchor-id="filtering-taxas-by-their-prevalence-in-ncts-step-4">Filtering taxas by their prevalence in NCTs (Step 4)</h3>
+<p>Before using NCTs for decontamination, we firstly need to remove samples from NCTs whose read counts are low.</p>
+<p>Overview of read counts in samples in NCTs</p>
+<div class="cell">
+<details>
+<summary>Code</summary>
+<div class="sourceCode cell-code" id="cb10"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a>bac.count.ntc <span class="ot">&lt;-</span> <span class="fu">tibble</span>(<span class="at">bac.count =</span> <span class="fu">sample_sums</span>(physeq.nct.filt.s), </span>
+<span id="cb10-2"><a href="#cb10-2" aria-hidden="true" tabindex="-1"></a>                        <span class="at">sample =</span> <span class="fu">sample_data</span>(physeq.nct.filt.s)<span class="sc">$</span>id) <span class="sc">%&gt;%</span> </span>
+<span id="cb10-3"><a href="#cb10-3" aria-hidden="true" tabindex="-1"></a>  <span class="fu">arrange</span> (bac.count)</span>
+<span id="cb10-4"><a href="#cb10-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb10-5"><a href="#cb10-5" aria-hidden="true" tabindex="-1"></a><span class="fu">tibble</span>(</span>
+<span id="cb10-6"><a href="#cb10-6" aria-hidden="true" tabindex="-1"></a>  <span class="st">"&gt;150 reads"</span> <span class="ot">=</span> <span class="fu">length</span>(<span class="fu">which</span>(bac.count.ntc<span class="sc">$</span>bac.count <span class="sc">&gt;</span> <span class="dv">150</span>)),</span>
+<span id="cb10-7"><a href="#cb10-7" aria-hidden="true" tabindex="-1"></a>  <span class="st">"&gt;250 reads"</span> <span class="ot">=</span> <span class="fu">length</span>(<span class="fu">which</span>(bac.count.ntc<span class="sc">$</span>bac.count <span class="sc">&gt;</span> <span class="dv">250</span>)),</span>
+<span id="cb10-8"><a href="#cb10-8" aria-hidden="true" tabindex="-1"></a>  <span class="st">"&gt;500 reads"</span> <span class="ot">=</span> <span class="fu">length</span>(<span class="fu">which</span>(bac.count.ntc<span class="sc">$</span>bac.count <span class="sc">&gt;</span> <span class="dv">500</span>)),</span>
+<span id="cb10-9"><a href="#cb10-9" aria-hidden="true" tabindex="-1"></a>  <span class="st">"&gt;750 reads"</span> <span class="ot">=</span> <span class="fu">length</span>(<span class="fu">which</span>(bac.count.ntc<span class="sc">$</span>bac.count <span class="sc">&gt;</span> <span class="dv">750</span>)),</span>
+<span id="cb10-10"><a href="#cb10-10" aria-hidden="true" tabindex="-1"></a>  <span class="st">"&gt;1000 reads"</span> <span class="ot">=</span> <span class="fu">length</span>(<span class="fu">which</span>(bac.count.ntc<span class="sc">$</span>bac.count <span class="sc">&gt;</span> <span class="dv">1000</span>)),</span>
+<span id="cb10-11"><a href="#cb10-11" aria-hidden="true" tabindex="-1"></a>)  <span class="sc">%&gt;%</span> </span>
+<span id="cb10-12"><a href="#cb10-12" aria-hidden="true" tabindex="-1"></a>  <span class="fu">kable</span> (<span class="at">caption=</span><span class="st">"NTC read counts"</span>, <span class="at">booktabs =</span><span class="cn">TRUE</span>) <span class="sc">%&gt;%</span></span>
+<span id="cb10-13"><a href="#cb10-13" aria-hidden="true" tabindex="-1"></a>  <span class="fu">kable_classic</span>(<span class="at">full_width =</span> F, <span class="at">html_font =</span> <span class="st">"Cambria"</span>) <span class="sc">%&gt;%</span></span>
+<span id="cb10-14"><a href="#cb10-14" aria-hidden="true" tabindex="-1"></a>  <span class="fu">kable_styling</span>(<span class="at">bootstrap_options =</span> <span class="fu">c</span>(<span class="st">"striped"</span>, <span class="st">"hover"</span>, <span class="st">"condensed"</span>, <span class="st">"responsive"</span>)) </span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
+<div class="cell-output-display">
+
+<table class=" lightable-classic table table-striped table-hover table-condensed table-responsive" style="font-family: Cambria; width: auto !important; margin-left: auto; margin-right: auto; margin-left: auto; margin-right: auto;">
+<caption>NTC read counts</caption>
+ <thead>
+  <tr>
+   <th style="text-align:right;"> &gt;150 reads </th>
+   <th style="text-align:right;"> &gt;250 reads </th>
+   <th style="text-align:right;"> &gt;500 reads </th>
+   <th style="text-align:right;"> &gt;750 reads </th>
+   <th style="text-align:right;"> &gt;1000 reads </th>
+  </tr>
+ </thead>
+<tbody>
+  <tr>
+   <td style="text-align:right;"> 60 </td>
+   <td style="text-align:right;"> 52 </td>
+   <td style="text-align:right;"> 36 </td>
+   <td style="text-align:right;"> 25 </td>
+   <td style="text-align:right;"> 22 </td>
+  </tr>
+</tbody>
+</table>
+
+</div>
+</div>
+<p>We decide to remove NCT samples if their read counts are less than 150</p>
+<div class="cell">
+<details>
+<summary>Code</summary>
+<div class="sourceCode cell-code" id="cb11"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true" tabindex="-1"></a>id.ex <span class="ot">&lt;-</span> bac.count.ntc <span class="sc">%&gt;%</span> <span class="fu">filter</span>(bac.count <span class="sc">&lt;</span> <span class="dv">150</span>) <span class="sc">%&gt;%</span> <span class="fu">pull</span> (sample)</span>
+<span id="cb11-2"><a href="#cb11-2" aria-hidden="true" tabindex="-1"></a>physeq.nct.filt.s <span class="ot">&lt;-</span> <span class="fu">subset_samples</span>(physeq.nct.filt.s, <span class="sc">!</span>(id <span class="sc">%in%</span> id.ex))</span>
+<span id="cb11-3"><a href="#cb11-3" aria-hidden="true" tabindex="-1"></a>physeq.nct.filt.s <span class="ot">&lt;-</span> <span class="fu">prune_taxa</span>(<span class="fu">taxa_sums</span>(physeq.nct.filt.s)<span class="sc">&gt;</span><span class="dv">0</span>, physeq.nct.filt.s)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
+</div>
+<p>Now, in NTC samples, we have <strong><em>60</em></strong> samples and <strong><em>573</em></strong> taxa.</p>
+<p>First of all, let us check the taxa overlap between NCT samples and true sample after low-abundance filtering by PERfect.</p>
+<div class="cell">
+<details>
+<summary>Code</summary>
+<div class="sourceCode cell-code" id="cb12"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb12-1"><a href="#cb12-1" aria-hidden="true" tabindex="-1"></a><span class="fu">PlotVenn2Sets</span>(<span class="fu">row.names</span>(<span class="fu">otu_table</span>(p.true.RmLowAbun)) <span class="sc">%&gt;%</span> <span class="fu">unique</span>(),</span>
+<span id="cb12-2"><a href="#cb12-2" aria-hidden="true" tabindex="-1"></a>              <span class="fu">row.names</span>(<span class="fu">otu_table</span>(physeq.nct.filt.s)) <span class="sc">%&gt;%</span> <span class="fu">unique</span>(),</span>
+<span id="cb12-3"><a href="#cb12-3" aria-hidden="true" tabindex="-1"></a>              <span class="st">"True Samples"</span> , <span class="st">"NCT Samples "</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
+<div class="cell-output-display">
+<p><img src="Pipeline_StreamLine_files/figure-html/unnamed-chunk-11-1.png" class="img-fluid" width="672"></p>
+</div>
+</div>
+<p>There are 185 taxa belong to NCT samples but not in true samples (after PERfect). They are obvious contamination.</p>
+<p>Instead of Decontam R package, we follow procedure of Nejman et al..</p>
+<section id="high-prevalence-taxas-in-ncts" class="level4">
+<h4 class="anchored" data-anchor-id="high-prevalence-taxas-in-ncts">High prevalence taxas in NCTs</h4>
+<p>We consider all taxas whose prevalence in NCTs are higher than a certain threshold (eg. 30%) are contaminants.</p>
+<p>In order to determine that threshold, we have a look at the plot below</p>
+<div class="cell">
+<details>
+<summary>Code</summary>
+<div class="sourceCode cell-code" id="cb13"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb13-1"><a href="#cb13-1" aria-hidden="true" tabindex="-1"></a>xout <span class="ot">&lt;-</span> <span class="fu">HighPrevalence_Data</span>(p.true.RmLowAbun, physeq.nct.filt.s)</span>
+<span id="cb13-2"><a href="#cb13-2" aria-hidden="true" tabindex="-1"></a><span class="fu">plot</span>(xout<span class="sc">$</span>factorx, xout<span class="sc">$</span>rel_tax, <span class="at">xlab=</span><span class="st">"prevalence in NCT samples"</span>, <span class="at">ylab=</span><span class="st">"proportion of tax in true samples"</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
+<div class="cell-output-display">
+<p><img src="Pipeline_StreamLine_files/figure-html/unnamed-chunk-12-1.png" class="img-fluid" width="672"></p>
+</div>
+</div>
+<p>This plot shows us how many percents of taxa we would remove from true samples (y-axis) if we pick up a threshold for high prevalence in NCT samples (x-axis).</p>
+<p>From this plot, a threshold 0.3 would be fine.</p>
+<div class="cell">
+<details>
+<summary>Code</summary>
+<div class="sourceCode cell-code" id="cb14"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb14-1"><a href="#cb14-1" aria-hidden="true" tabindex="-1"></a>filter <span class="ot">&lt;-</span> <span class="fl">0.3</span></span>
+<span id="cb14-2"><a href="#cb14-2" aria-hidden="true" tabindex="-1"></a>filtered_taxa1 <span class="ot">&lt;-</span> <span class="fu">tibble</span>(</span>
+<span id="cb14-3"><a href="#cb14-3" aria-hidden="true" tabindex="-1"></a>  <span class="at">Cont =</span> <span class="fu">genefilter_sample</span>(physeq.nct.filt.s, <span class="fu">filterfun_sample</span>(<span class="cf">function</span>(x) x <span class="sc">&gt;</span> <span class="dv">0</span>), <span class="at">A=</span>filter<span class="sc">*</span><span class="fu">nsamples</span>(physeq.nct.filt.s)),</span>
+<span id="cb14-4"><a href="#cb14-4" aria-hidden="true" tabindex="-1"></a>  <span class="at">OTU =</span> <span class="fu">names</span>(<span class="fu">genefilter_sample</span>(physeq.nct.filt.s, <span class="fu">filterfun_sample</span>(<span class="cf">function</span>(x) x <span class="sc">&gt;</span> <span class="dv">0</span>), <span class="at">A=</span>filter<span class="sc">*</span><span class="fu">nsamples</span>(physeq.nct.filt.s)))</span>
+<span id="cb14-5"><a href="#cb14-5" aria-hidden="true" tabindex="-1"></a>) <span class="sc">%&gt;%</span> </span>
+<span id="cb14-6"><a href="#cb14-6" aria-hidden="true" tabindex="-1"></a>  <span class="fu">arrange</span> (<span class="sc">-</span>Cont)</span>
+<span id="cb14-7"><a href="#cb14-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb14-8"><a href="#cb14-8" aria-hidden="true" tabindex="-1"></a>cont.count <span class="ot">&lt;-</span> filtered_taxa1 <span class="sc">%&gt;%</span> <span class="fu">count</span>(Cont) </span>
+<span id="cb14-9"><a href="#cb14-9" aria-hidden="true" tabindex="-1"></a>cont.count <span class="sc">%&gt;%</span> </span>
+<span id="cb14-10"><a href="#cb14-10" aria-hidden="true" tabindex="-1"></a>  <span class="fu">kable</span> (<span class="at">caption=</span><span class="fu">paste</span>(<span class="st">"Count of contaminants (filter"</span>, filter<span class="sc">*</span><span class="dv">100</span>, <span class="st">" %)"</span>), <span class="at">booktabs =</span><span class="cn">TRUE</span>) <span class="sc">%&gt;%</span></span>
+<span id="cb14-11"><a href="#cb14-11" aria-hidden="true" tabindex="-1"></a>  <span class="fu">kable_classic</span>(<span class="at">full_width =</span> F, <span class="at">html_font =</span> <span class="st">"Cambria"</span>) <span class="sc">%&gt;%</span></span>
+<span id="cb14-12"><a href="#cb14-12" aria-hidden="true" tabindex="-1"></a>  <span class="fu">kable_styling</span>(<span class="at">bootstrap_options =</span> <span class="fu">c</span>(<span class="st">"striped"</span>, <span class="st">"hover"</span>, <span class="st">"condensed"</span>, <span class="st">"responsive"</span>)) </span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
+<div class="cell-output-display">
+
+<table class=" lightable-classic table table-striped table-hover table-condensed table-responsive" style="font-family: Cambria; width: auto !important; margin-left: auto; margin-right: auto; margin-left: auto; margin-right: auto;">
+<caption>Count of contaminants (filter 30  %)</caption>
+ <thead>
+  <tr>
+   <th style="text-align:left;"> Cont </th>
+   <th style="text-align:right;"> n </th>
+  </tr>
+ </thead>
+<tbody>
+  <tr>
+   <td style="text-align:left;"> FALSE </td>
+   <td style="text-align:right;"> 557 </td>
+  </tr>
+  <tr>
+   <td style="text-align:left;"> TRUE </td>
+   <td style="text-align:right;"> 16 </td>
+  </tr>
+</tbody>
+</table>
+
+</div>
+</div>
+<p>The list of contaminants determined by high prevalence in NCTs (threhold 0.3)</p>
+<div class="cell">
+<details>
+<summary>Code</summary>
+<div class="sourceCode cell-code" id="cb15"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb15-1"><a href="#cb15-1" aria-hidden="true" tabindex="-1"></a>df.fam.melt <span class="ot">&lt;-</span> <span class="fu">psmelt</span>(physeq.nct.filt.s)</span>
+<span id="cb15-2"><a href="#cb15-2" aria-hidden="true" tabindex="-1"></a>df.fam.melt <span class="sc">%&gt;%</span> <span class="fu">select</span>(OTU, species) <span class="sc">%&gt;%</span> </span>
+<span id="cb15-3"><a href="#cb15-3" aria-hidden="true" tabindex="-1"></a>  unique <span class="sc">%&gt;%</span> </span>
+<span id="cb15-4"><a href="#cb15-4" aria-hidden="true" tabindex="-1"></a>  <span class="fu">right_join</span>(filtered_taxa1) <span class="sc">%&gt;%</span> </span>
+<span id="cb15-5"><a href="#cb15-5" aria-hidden="true" tabindex="-1"></a>  <span class="fu">filter</span>(Cont <span class="sc">==</span> <span class="cn">TRUE</span>) <span class="sc">%&gt;%</span> </span>
+<span id="cb15-6"><a href="#cb15-6" aria-hidden="true" tabindex="-1"></a>  <span class="fu">select</span>(<span class="sc">-</span>Cont) <span class="sc">%&gt;%</span> </span>
+<span id="cb15-7"><a href="#cb15-7" aria-hidden="true" tabindex="-1"></a>  <span class="fu">kable</span> (<span class="at">caption=</span><span class="fu">paste</span>(<span class="st">"Contaminants (filter"</span>, filter<span class="sc">*</span><span class="dv">100</span>, <span class="st">" %)"</span>), <span class="at">booktabs =</span><span class="cn">TRUE</span>) <span class="sc">%&gt;%</span></span>
+<span id="cb15-8"><a href="#cb15-8" aria-hidden="true" tabindex="-1"></a>  <span class="fu">kable_classic</span>(<span class="at">full_width =</span> F, <span class="at">html_font =</span> <span class="st">"Cambria"</span>) <span class="sc">%&gt;%</span></span>
+<span id="cb15-9"><a href="#cb15-9" aria-hidden="true" tabindex="-1"></a>  <span class="fu">kable_styling</span>(<span class="at">bootstrap_options =</span> <span class="fu">c</span>(<span class="st">"striped"</span>, <span class="st">"hover"</span>, <span class="st">"condensed"</span>, <span class="st">"responsive"</span>)) <span class="sc">%&gt;%</span> </span>
+<span id="cb15-10"><a href="#cb15-10" aria-hidden="true" tabindex="-1"></a>  <span class="fu">scroll_box</span>(<span class="at">width =</span> <span class="st">"70%"</span>, <span class="at">height =</span> <span class="st">"600px"</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
+<div class="cell-output cell-output-stderr">
+<pre><code>Joining, by = "OTU"</code></pre>
+</div>
+<div class="cell-output-display">
+
+<div style="border: 1px solid #ddd; padding: 0px; overflow-y: scroll; height:600px; overflow-x: scroll; width:70%; "><table class=" lightable-classic table table-striped table-hover table-condensed table-responsive" style="font-family: Cambria; width: auto !important; margin-left: auto; margin-right: auto; margin-left: auto; margin-right: auto;">
+<caption>Contaminants (filter 30  %)</caption>
+ <thead>
+  <tr>
+   <th style="text-align:left;position: sticky; top:0; background-color: #FFFFFF;"> OTU </th>
+   <th style="text-align:left;position: sticky; top:0; background-color: #FFFFFF;"> species </th>
+  </tr>
+ </thead>
+<tbody>
+  <tr>
+   <td style="text-align:left;"> 13689 </td>
+   <td style="text-align:left;"> Sphingomonas paucimobilis </td>
+  </tr>
+  <tr>
+   <td style="text-align:left;"> 34062 </td>
+   <td style="text-align:left;"> Moraxella osloensis </td>
+  </tr>
+  <tr>
+   <td style="text-align:left;"> 1523415 </td>
+   <td style="text-align:left;"> Sphingomonas sp. </td>
+  </tr>
+  <tr>
+   <td style="text-align:left;"> 1280 </td>
+   <td style="text-align:left;"> Staphylococcus aureus </td>
+  </tr>
+  <tr>
+   <td style="text-align:left;"> 1276282 </td>
+   <td style="text-align:left;"> Staphylococcus pasteuri </td>
+  </tr>
+  <tr>
+   <td style="text-align:left;"> 739141 </td>
+   <td style="text-align:left;"> Methylobacterium sp. </td>
+  </tr>
+  <tr>
+   <td style="text-align:left;"> 1292 </td>
+   <td style="text-align:left;"> Staphylococcus warneri </td>
+  </tr>
+  <tr>
+   <td style="text-align:left;"> 653931 </td>
+   <td style="text-align:left;"> Sphingomonas alpina </td>
+  </tr>
+  <tr>
+   <td style="text-align:left;"> 553199 </td>
+   <td style="text-align:left;"> Cutibacterium acnes </td>
+  </tr>
+  <tr>
+   <td style="text-align:left;"> 1282 </td>
+   <td style="text-align:left;"> Staphylococcus epidermidis </td>
+  </tr>
+  <tr>
+   <td style="text-align:left;"> 1549858 </td>
+   <td style="text-align:left;"> Sphingomonas taxi </td>
+  </tr>
+  <tr>
+   <td style="text-align:left;"> 152682 </td>
+   <td style="text-align:left;"> Sphingomonas melonis </td>
+  </tr>
+  <tr>
+   <td style="text-align:left;"> 2579977 </td>
+   <td style="text-align:left;"> Brevundimonas sp. </td>
+  </tr>
+  <tr>
+   <td style="text-align:left;"> 1945662 </td>
+   <td style="text-align:left;"> Paracoccus contaminans </td>
+  </tr>
+  <tr>
+   <td style="text-align:left;"> 1560345 </td>
+   <td style="text-align:left;"> Sphingomonas panacis </td>
+  </tr>
+  <tr>
+   <td style="text-align:left;"> 93064 </td>
+   <td style="text-align:left;"> Sphingomonas koreensis </td>
+  </tr>
+</tbody>
+</table></div>
+
+</div>
+</div>
+<p>We now remove those taxa which have high prevalence in NTC samples out of true samples</p>
+<div class="cell">
+<details>
+<summary>Code</summary>
+<div class="sourceCode cell-code" id="cb17"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb17-1"><a href="#cb17-1" aria-hidden="true" tabindex="-1"></a>p.true.RmLowAbun.RmHighPrev <span class="ot">&lt;-</span> <span class="fu">prune_taxa</span>(<span class="fu">setdiff</span>(<span class="fu">rownames</span>(<span class="fu">otu_table</span>(p.true.RmLowAbun)),filtered_taxa1[filtered_taxa1<span class="sc">$</span>Cont<span class="sc">==</span><span class="cn">TRUE</span>,] <span class="sc">%&gt;%</span> <span class="fu">pull</span>(<span class="st">"OTU"</span>)), p.true.RmLowAbun)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
+</div>
+<p>Now we have <strong><em>58</em></strong> true samples and <strong><em>825</em></strong> taxa. In NCTs, we have <strong><em>60</em></strong> control samples and <strong><em>573</em></strong> taxa.</p>
+<p>The Venn diagram of taxa between true samples and NCTs is now</p>
+<div class="cell">
+<details>
+<summary>Code</summary>
+<div class="sourceCode cell-code" id="cb18"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb18-1"><a href="#cb18-1" aria-hidden="true" tabindex="-1"></a><span class="fu">PlotVenn2Sets</span>(<span class="fu">rownames</span>(<span class="fu">otu_table</span>(p.true.RmLowAbun.RmHighPrev)), <span class="fu">rownames</span>(<span class="fu">otu_table</span>(physeq.nct.filt.s)), <span class="st">"True samples"</span>, <span class="st">"NCT sample"</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
+<div class="cell-output-display">
+<p><img src="Pipeline_StreamLine_files/figure-html/unnamed-chunk-16-1.png" class="img-fluid" width="672"></p>
+</div>
+</div>
+</section>
+<section id="low-prevalence-taxas-in-ncts" class="level4">
+<h4 class="anchored" data-anchor-id="low-prevalence-taxas-in-ncts">Low prevalence taxas in NCTs</h4>
+<p>For those taxa whose prevalence are low in NCT samples, we apply Binomial test per-condition, per-batch to determine if they are contaminants or not.</p>
+<p>We need metadata information to proceed</p>
+<div class="cell">
+<details>
+<summary>Code</summary>
+<div class="sourceCode cell-code" id="cb19"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb19-1"><a href="#cb19-1" aria-hidden="true" tabindex="-1"></a><span class="co"># load metadata</span></span>
+<span id="cb19-2"><a href="#cb19-2" aria-hidden="true" tabindex="-1"></a><span class="fu">library</span>(<span class="st">"readxl"</span>)</span>
+<span id="cb19-3"><a href="#cb19-3" aria-hidden="true" tabindex="-1"></a>metadata <span class="ot">&lt;-</span> <span class="fu">read_excel</span>(<span class="st">"../../raw_data/Metadata_2.xlsx"</span>) <span class="sc">%&gt;%</span> <span class="fu">as.data.frame</span>()</span>
+<span id="cb19-4"><a href="#cb19-4" aria-hidden="true" tabindex="-1"></a>metadata <span class="ot">&lt;-</span> metadata[,<span class="fu">c</span>(<span class="st">"uniqueID"</span>, <span class="st">"sample_side"</span>, <span class="st">"sample_nr"</span>, <span class="st">"TRUE_control"</span>, <span class="st">"DNAex_round"</span>, <span class="st">"PCR_round"</span>)]</span>
+<span id="cb19-5"><a href="#cb19-5" aria-hidden="true" tabindex="-1"></a>physeq.comb.filt <span class="ot">&lt;-</span> <span class="fu">merge_phyloseq</span>(p.true.RmLowAbun.RmHighPrev, physeq.nct.filt.s)</span>
+<span id="cb19-6"><a href="#cb19-6" aria-hidden="true" tabindex="-1"></a><span class="fu">sample_data</span>(physeq.comb.filt)<span class="sc">$</span>is.neg <span class="ot">&lt;-</span> <span class="fu">sample_data</span>(physeq.comb.filt)<span class="sc">$</span>TRUE_control <span class="sc">==</span> <span class="st">"control"</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
+</div>
+<p>The samples in each condition each batch must contain both true sample and NCTs in order to apply Binomial test. Thus, we firstly check how many of them are valid</p>
+<div class="cell">
+<details>
+<summary>Code</summary>
+<div class="sourceCode cell-code" id="cb20"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb20-1"><a href="#cb20-1" aria-hidden="true" tabindex="-1"></a><span class="co"># filter metadata </span></span>
+<span id="cb20-2"><a href="#cb20-2" aria-hidden="true" tabindex="-1"></a>keep_idx <span class="ot">&lt;-</span> <span class="fu">sample_data</span>(physeq.comb.filt) <span class="sc">%&gt;%</span> <span class="fu">pull</span>(uniqueID) <span class="sc">%&gt;%</span> <span class="fu">unique</span>()</span>
+<span id="cb20-3"><a href="#cb20-3" aria-hidden="true" tabindex="-1"></a>metadata <span class="ot">&lt;-</span> metadata[metadata<span class="sc">$</span>uniqueID <span class="sc">%in%</span> keep_idx,]</span>
+<span id="cb20-4"><a href="#cb20-4" aria-hidden="true" tabindex="-1"></a>metadata <span class="ot">&lt;-</span> metadata <span class="sc">%&gt;%</span> <span class="fu">mutate</span>(<span class="at">sample_type =</span> <span class="fu">ifelse</span>(<span class="fu">grepl</span>(<span class="st">"paraffin"</span>, <span class="fu">tolower</span>(sample_side), <span class="at">fixed =</span> <span class="cn">TRUE</span>),<span class="st">"paraffin"</span>, </span>
+<span id="cb20-5"><a href="#cb20-5" aria-hidden="true" tabindex="-1"></a>                                                     <span class="fu">ifelse</span>(<span class="fu">grepl</span>(<span class="st">"buffer"</span>, <span class="fu">tolower</span>(sample_side), <span class="at">fixed =</span> <span class="cn">TRUE</span>),<span class="st">"buffer"</span>,</span>
+<span id="cb20-6"><a href="#cb20-6" aria-hidden="true" tabindex="-1"></a>                                                    <span class="fu">ifelse</span>(<span class="fu">grepl</span>(<span class="st">"pcr"</span>, <span class="fu">tolower</span>(sample_side), <span class="at">fixed =</span> <span class="cn">TRUE</span>),<span class="st">"pcr_ctrl"</span>, <span class="st">"true_sample"</span>))))</span>
+<span id="cb20-7"><a href="#cb20-7" aria-hidden="true" tabindex="-1"></a><span class="fu">rownames</span>(metadata) <span class="ot">&lt;-</span> <span class="fu">paste</span>(metadata<span class="sc">$</span>uniqueID, metadata<span class="sc">$</span>sample_side, <span class="at">sep =</span> <span class="st">'.'</span>)</span>
+<span id="cb20-8"><a href="#cb20-8" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb20-9"><a href="#cb20-9" aria-hidden="true" tabindex="-1"></a>tmp <span class="ot">&lt;-</span> metadata<span class="sc">$</span>DNAex_round <span class="sc">%&gt;%</span> <span class="fu">as.numeric</span>()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
+<div class="cell-output cell-output-stderr">
+<pre><code>Warning in metadata$DNAex_round %&gt;% as.numeric(): NAs introduced by coercion</code></pre>
+</div>
+<details>
+<summary>Code</summary>
+<div class="sourceCode cell-code" id="cb22"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb22-1"><a href="#cb22-1" aria-hidden="true" tabindex="-1"></a>DNAex_lst <span class="ot">&lt;-</span> tmp[<span class="sc">!</span><span class="fu">is.na</span>(tmp)] <span class="sc">%&gt;%</span> <span class="fu">unique</span>()</span>
+<span id="cb22-2"><a href="#cb22-2" aria-hidden="true" tabindex="-1"></a>tmp <span class="ot">&lt;-</span> metadata<span class="sc">$</span>PCR_round <span class="sc">%&gt;%</span> <span class="fu">as.numeric</span>()</span>
+<span id="cb22-3"><a href="#cb22-3" aria-hidden="true" tabindex="-1"></a>PCR_lst <span class="ot">&lt;-</span> tmp[<span class="sc">!</span><span class="fu">is.na</span>(tmp)] <span class="sc">%&gt;%</span> <span class="fu">unique</span>()</span>
+<span id="cb22-4"><a href="#cb22-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb22-5"><a href="#cb22-5" aria-hidden="true" tabindex="-1"></a>is.valid.DNAex <span class="ot">&lt;-</span> <span class="fu">lapply</span>(DNAex_lst, is.valid.batch, <span class="at">batch_type=</span><span class="st">"DNA"</span>, <span class="at">meta_data=</span>metadata)</span>
+<span id="cb22-6"><a href="#cb22-6" aria-hidden="true" tabindex="-1"></a>is.valid.PCR <span class="ot">&lt;-</span> <span class="fu">lapply</span>(PCR_lst, is.valid.batch, <span class="at">batch_type=</span><span class="st">"PCR"</span>, <span class="at">meta_data=</span>metadata)</span>
+<span id="cb22-7"><a href="#cb22-7" aria-hidden="true" tabindex="-1"></a>Tab <span class="ot">&lt;-</span> <span class="fu">data.frame</span>(<span class="fu">matrix</span>(<span class="cn">NA</span>, <span class="at">nrow =</span> <span class="dv">2</span>, <span class="at">ncol =</span> <span class="dv">9</span>))</span>
+<span id="cb22-8"><a href="#cb22-8" aria-hidden="true" tabindex="-1"></a><span class="fu">colnames</span>(Tab) <span class="ot">&lt;-</span> <span class="fu">c</span>(<span class="dv">1</span><span class="sc">:</span><span class="dv">9</span>)</span>
+<span id="cb22-9"><a href="#cb22-9" aria-hidden="true" tabindex="-1"></a><span class="fu">rownames</span>(Tab) <span class="ot">&lt;-</span> <span class="fu">c</span>(<span class="st">"DNAex_round"</span>, <span class="st">"PCR_round"</span>)</span>
+<span id="cb22-10"><a href="#cb22-10" aria-hidden="true" tabindex="-1"></a>Tab[<span class="st">"DNAex_round"</span>, <span class="dv">1</span><span class="sc">:</span><span class="fu">length</span>(DNAex_lst)] <span class="ot">&lt;-</span> is.valid.DNAex</span>
+<span id="cb22-11"><a href="#cb22-11" aria-hidden="true" tabindex="-1"></a>Tab[<span class="st">"PCR_round"</span>, <span class="dv">1</span><span class="sc">:</span><span class="fu">length</span>(PCR_lst)] <span class="ot">&lt;-</span> is.valid.PCR</span>
+<span id="cb22-12"><a href="#cb22-12" aria-hidden="true" tabindex="-1"></a>Tab</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
+<div class="cell-output cell-output-stdout">
+<pre><code>                1    2     3     4     5     6     7    8     9
+DNAex_round  TRUE TRUE  TRUE  TRUE  TRUE  TRUE FALSE   NA    NA
+PCR_round   FALSE TRUE FALSE FALSE FALSE FALSE FALSE TRUE FALSE</code></pre>
+</div>
+</div>
+<p>For each condition each batch, we apply Binomial test on each taxa whose prevalence are low in NCT samples, to determine if they are contaminants and then remove them from true samples.</p>
+<div class="cell">
+<details>
+<summary>Code</summary>
+<div class="sourceCode cell-code" id="cb24"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb24-1"><a href="#cb24-1" aria-hidden="true" tabindex="-1"></a>p.true.RmLowAbun.RmHLPrev <span class="ot">&lt;-</span> <span class="fu">Wrapper_filter_by_low_prevalence</span>(p.true.RmLowAbun.RmHighPrev,physeq.nct.filt.s,metadata)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
+<div class="cell-output cell-output-stderr">
+<pre><code>Warning in metadata$DNAex_round %&gt;% as.numeric(): NAs introduced by coercion</code></pre>
+</div>
+<div class="cell-output cell-output-stdout">
+<pre><code>[1] "In this batch with this condition, we have either all true sample or all control."
+[1] "In this batch with this condition, we have either all true sample or all control."
+[1] "In this batch with this condition, we have either all true sample or all control."
+[1] "In this batch with this condition, we have either all true sample or all control."
+[1] "In this batch with this condition, we have either all true sample or all control."
+[1] "In this batch with this condition, we have either all true sample or all control."
+[1] "In this batch with this condition, we have either all true sample or all control."
+[1] "In this batch with this condition, we have either all true sample or all control."</code></pre>
+</div>
+</div>
+<p>The overlap is now</p>
+<div class="cell">
+<details>
+<summary>Code</summary>
+<div class="sourceCode cell-code" id="cb27"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb27-1"><a href="#cb27-1" aria-hidden="true" tabindex="-1"></a><span class="fu">PlotVenn2Sets</span>(p.true.RmLowAbun.RmHLPrev <span class="sc">%&gt;%</span> <span class="fu">otu_table</span>() <span class="sc">%&gt;%</span> <span class="fu">rownames</span>(),</span>
+<span id="cb27-2"><a href="#cb27-2" aria-hidden="true" tabindex="-1"></a>              physeq.nct.filt.s <span class="sc">%&gt;%</span> <span class="fu">otu_table</span>() <span class="sc">%&gt;%</span> <span class="fu">rownames</span>(),</span>
+<span id="cb27-3"><a href="#cb27-3" aria-hidden="true" tabindex="-1"></a>              <span class="st">"True samples"</span>, <span class="st">"NCT samples"</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
+<div class="cell-output-display">
+<p><img src="Pipeline_StreamLine_files/figure-html/unnamed-chunk-20-1.png" class="img-fluid" width="672"></p>
+</div>
+</div>
+<p>Further, we have a look at those 59 taxas in NCTs but not contaminants</p>
+<div class="cell">
+<details>
+<summary>Code</summary>
+<div class="sourceCode cell-code" id="cb28"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb28-1"><a href="#cb28-1" aria-hidden="true" tabindex="-1"></a>physeq.nct.NotCont <span class="ot">&lt;-</span> <span class="fu">prune_taxa</span>(<span class="fu">intersect</span>(physeq.nct.filt.s <span class="sc">%&gt;%</span> <span class="fu">otu_table</span>() <span class="sc">%&gt;%</span> <span class="fu">rownames</span>(), </span>
+<span id="cb28-2"><a href="#cb28-2" aria-hidden="true" tabindex="-1"></a>                                           p.true.RmLowAbun.RmHLPrev <span class="sc">%&gt;%</span> <span class="fu">otu_table</span>() <span class="sc">%&gt;%</span> <span class="fu">rownames</span>()),</span>
+<span id="cb28-3"><a href="#cb28-3" aria-hidden="true" tabindex="-1"></a>                                 physeq.nct.filt.s)</span>
+<span id="cb28-4"><a href="#cb28-4" aria-hidden="true" tabindex="-1"></a><span class="fu">Inspect_taxa_Species</span>(physeq.nct.NotCont, <span class="st">"In NCTs but not contaminants"</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
+<div class="cell-output-display">
+
+<div style="border: 1px solid #ddd; padding: 0px; overflow-y: scroll; height:600px; overflow-x: scroll; width:70%; "><table class=" lightable-classic table table-striped table-hover table-condensed table-responsive" style="font-family: Cambria; width: auto !important; margin-left: auto; margin-right: auto; margin-left: auto; margin-right: auto;">
+<caption>In NCTs but not contaminants</caption>
+ <thead>
+  <tr>
+   <th style="text-align:left;position: sticky; top:0; background-color: #FFFFFF;">   </th>
+   <th style="text-align:left;position: sticky; top:0; background-color: #FFFFFF;"> OTU </th>
+   <th style="text-align:left;position: sticky; top:0; background-color: #FFFFFF;"> species </th>
+  </tr>
+ </thead>
+<tbody>
+  <tr>
+   <td style="text-align:left;"> 2258 </td>
+   <td style="text-align:left;"> 33033 </td>
+   <td style="text-align:left;"> Parvimonas micra </td>
+  </tr>
+  <tr>
+   <td style="text-align:left;"> 3439 </td>
+   <td style="text-align:left;"> 837 </td>
+   <td style="text-align:left;"> Porphyromonas gingivalis </td>
+  </tr>
+  <tr>
+   <td style="text-align:left;"> 842 </td>
+   <td style="text-align:left;"> 182337 </td>
+   <td style="text-align:left;"> Erwinia billingiae </td>
+  </tr>
+  <tr>
+   <td style="text-align:left;"> 128 </td>
+   <td style="text-align:left;"> 108980 </td>
+   <td style="text-align:left;"> Acinetobacter ursingii </td>
+  </tr>
+  <tr>
+   <td style="text-align:left;"> 208 </td>
+   <td style="text-align:left;"> 1134687 </td>
+   <td style="text-align:left;"> Klebsiella michiganensis </td>
+  </tr>
+  <tr>
+   <td style="text-align:left;"> 2831 </td>
+   <td style="text-align:left;"> 488 </td>
+   <td style="text-align:left;"> Neisseria mucosa </td>
+  </tr>
+  <tr>
+   <td style="text-align:left;"> 2474 </td>
+   <td style="text-align:left;"> 37921 </td>
+   <td style="text-align:left;"> Arthrobacter agilis </td>
+  </tr>
+  <tr>
+   <td style="text-align:left;"> 576 </td>
+   <td style="text-align:left;"> 1583098 </td>
+   <td style="text-align:left;"> Fusobacterium hwasookii </td>
+  </tr>
+  <tr>
+   <td style="text-align:left;"> 66 </td>
+   <td style="text-align:left;"> 106649 </td>
+   <td style="text-align:left;"> Acinetobacter guillouiae </td>
+  </tr>
+  <tr>
+   <td style="text-align:left;"> 2548 </td>
+   <td style="text-align:left;"> 465721 </td>
+   <td style="text-align:left;"> Steroidobacter denitrificans </td>
+  </tr>
+  <tr>
+   <td style="text-align:left;"> 792 </td>
+   <td style="text-align:left;"> 1805933 </td>
+   <td style="text-align:left;"> Rahnella sp. </td>
+  </tr>
+  <tr>
+   <td style="text-align:left;"> 1843 </td>
+   <td style="text-align:left;"> 271865 </td>
+   <td style="text-align:left;"> Ochrobactrum quorumnocens </td>
+  </tr>
+  <tr>
+   <td style="text-align:left;"> 10 </td>
+   <td style="text-align:left;"> 1029756 </td>
+   <td style="text-align:left;"> Hyphomicrobium nitrativorans </td>
+  </tr>
+  <tr>
+   <td style="text-align:left;"> 946 </td>
+   <td style="text-align:left;"> 1871111 </td>
+   <td style="text-align:left;"> Acinetobacter defluvii </td>
+  </tr>
+  <tr>
+   <td style="text-align:left;"> 1297 </td>
+   <td style="text-align:left;"> 208224 </td>
+   <td style="text-align:left;"> Enterobacter kobei </td>
+  </tr>
+  <tr>
+   <td style="text-align:left;"> 447 </td>
+   <td style="text-align:left;"> 1463158 </td>
+   <td style="text-align:left;"> Thermomonas carbonis </td>
+  </tr>
+  <tr>
+   <td style="text-align:left;"> 3141 </td>
+   <td style="text-align:left;"> 61645 </td>
+   <td style="text-align:left;"> Enterobacter asburiae </td>
+  </tr>
+  <tr>
+   <td style="text-align:left;"> 309 </td>
+   <td style="text-align:left;"> 1398 </td>
+   <td style="text-align:left;"> Bacillus coagulans </td>
+  </tr>
+  <tr>
+   <td style="text-align:left;"> 663 </td>
+   <td style="text-align:left;"> 1756993 </td>
+   <td style="text-align:left;"> sp. SCO41 </td>
+  </tr>
+  <tr>
+   <td style="text-align:left;"> 1026 </td>
+   <td style="text-align:left;"> 2058152 </td>
+   <td style="text-align:left;"> Klebsiella grimontii </td>
+  </tr>
+  <tr>
+   <td style="text-align:left;"> 1094 </td>
+   <td style="text-align:left;"> 2060312 </td>
+   <td style="text-align:left;"> Altererythrobacter sp. </td>
+  </tr>
+  <tr>
+   <td style="text-align:left;"> 1221 </td>
+   <td style="text-align:left;"> 2071710 </td>
+   <td style="text-align:left;"> Enterobacter sichuanensis </td>
+  </tr>
+  <tr>
+   <td style="text-align:left;"> 1740 </td>
+   <td style="text-align:left;"> 2603292 </td>
+   <td style="text-align:left;"> Salinibacterium sp. </td>
+  </tr>
+  <tr>
+   <td style="text-align:left;"> 1974 </td>
+   <td style="text-align:left;"> 293 </td>
+   <td style="text-align:left;"> Brevundimonas diminuta </td>
+  </tr>
+  <tr>
+   <td style="text-align:left;"> 2815 </td>
+   <td style="text-align:left;"> 487 </td>
+   <td style="text-align:left;"> Neisseria meningitidis </td>
+  </tr>
+  <tr>
+   <td style="text-align:left;"> 2939 </td>
+   <td style="text-align:left;"> 515393 </td>
+   <td style="text-align:left;"> Pseudomonas yamanorum </td>
+  </tr>
+  <tr>
+   <td style="text-align:left;"> 3014 </td>
+   <td style="text-align:left;"> 569 </td>
+   <td style="text-align:left;"> Hafnia alvei </td>
+  </tr>
+  <tr>
+   <td style="text-align:left;"> 1435 </td>
+   <td style="text-align:left;"> 225992 </td>
+   <td style="text-align:left;"> Comamonas kerstersii </td>
+  </tr>
+  <tr>
+   <td style="text-align:left;"> 1907 </td>
+   <td style="text-align:left;"> 28449 </td>
+   <td style="text-align:left;"> Neisseria subflava </td>
+  </tr>
+  <tr>
+   <td style="text-align:left;"> 2026 </td>
+   <td style="text-align:left;"> 294 </td>
+   <td style="text-align:left;"> Pseudomonas fluorescens </td>
+  </tr>
+  <tr>
+   <td style="text-align:left;"> 2070 </td>
+   <td style="text-align:left;"> 29486 </td>
+   <td style="text-align:left;"> Yersinia ruckeri </td>
+  </tr>
+  <tr>
+   <td style="text-align:left;"> 2163 </td>
+   <td style="text-align:left;"> 312306 </td>
+   <td style="text-align:left;"> Pseudomonas entomophila </td>
+  </tr>
+  <tr>
+   <td style="text-align:left;"> 2662 </td>
+   <td style="text-align:left;"> 47883 </td>
+   <td style="text-align:left;"> Pseudomonas synxantha </td>
+  </tr>
+  <tr>
+   <td style="text-align:left;"> 2999 </td>
+   <td style="text-align:left;"> 529 </td>
+   <td style="text-align:left;"> Ochrobactrum anthropi </td>
+  </tr>
+  <tr>
+   <td style="text-align:left;"> 3289 </td>
+   <td style="text-align:left;"> 645 </td>
+   <td style="text-align:left;"> Aeromonas salmonicida </td>
+  </tr>
+  <tr>
+   <td style="text-align:left;"> 3351 </td>
+   <td style="text-align:left;"> 69218 </td>
+   <td style="text-align:left;"> Enterobacter cancerogenus </td>
+  </tr>
+  <tr>
+   <td style="text-align:left;"> 269 </td>
+   <td style="text-align:left;"> 1332080 </td>
+   <td style="text-align:left;"> Sphingobium baderi </td>
+  </tr>
+  <tr>
+   <td style="text-align:left;"> 382 </td>
+   <td style="text-align:left;"> 1454377 </td>
+   <td style="text-align:left;"> Yersinia frederiksenii </td>
+  </tr>
+  <tr>
+   <td style="text-align:left;"> 520 </td>
+   <td style="text-align:left;"> 1530123 </td>
+   <td style="text-align:left;"> Acinetobacter seifertii </td>
+  </tr>
+  <tr>
+   <td style="text-align:left;"> 648 </td>
+   <td style="text-align:left;"> 1639133 </td>
+   <td style="text-align:left;"> Citrobacter portucalensis </td>
+  </tr>
+  <tr>
+   <td style="text-align:left;"> 779 </td>
+   <td style="text-align:left;"> 1804990 </td>
+   <td style="text-align:left;"> bacterium WY83 </td>
+  </tr>
+  <tr>
+   <td style="text-align:left;"> 969 </td>
+   <td style="text-align:left;"> 1972431 </td>
+   <td style="text-align:left;"> ursingii </td>
+  </tr>
+  <tr>
+   <td style="text-align:left;"> 1149 </td>
+   <td style="text-align:left;"> 2070347 </td>
+   <td style="text-align:left;"> Agrococcus sp. </td>
+  </tr>
+  <tr>
+   <td style="text-align:left;"> 1354 </td>
+   <td style="text-align:left;"> 2136182 </td>
+   <td style="text-align:left;"> Acinetobacter cumulans </td>
+  </tr>
+  <tr>
+   <td style="text-align:left;"> 1444 </td>
+   <td style="text-align:left;"> 237258 </td>
+   <td style="text-align:left;"> Cloacibacterium normanense </td>
+  </tr>
+  <tr>
+   <td style="text-align:left;"> 1517 </td>
+   <td style="text-align:left;"> 24 </td>
+   <td style="text-align:left;"> Shewanella putrefaciens </td>
+  </tr>
+  <tr>
+   <td style="text-align:left;"> 1602 </td>
+   <td style="text-align:left;"> 2517362 </td>
+   <td style="text-align:left;"> Campylobacter sp. </td>
+  </tr>
+  <tr>
+   <td style="text-align:left;"> 1640 </td>
+   <td style="text-align:left;"> 2591145 </td>
+   <td style="text-align:left;"> Cellulomonas sp. </td>
+  </tr>
+  <tr>
+   <td style="text-align:left;"> 1790 </td>
+   <td style="text-align:left;"> 2663009 </td>
+   <td style="text-align:left;"> Fusobacterium pseudoperiodonticum </td>
+  </tr>
+  <tr>
+   <td style="text-align:left;"> 2155 </td>
+   <td style="text-align:left;"> 300 </td>
+   <td style="text-align:left;"> Pseudomonas mendocina </td>
+  </tr>
+  <tr>
+   <td style="text-align:left;"> 2307 </td>
+   <td style="text-align:left;"> 363835 </td>
+   <td style="text-align:left;"> Sphingomonas ginsengisoli </td>
+  </tr>
+  <tr>
+   <td style="text-align:left;"> 2387 </td>
+   <td style="text-align:left;"> 363952 </td>
+   <td style="text-align:left;"> Comamonas thiooxydans </td>
+  </tr>
+  <tr>
+   <td style="text-align:left;"> 2458 </td>
+   <td style="text-align:left;"> 368607 </td>
+   <td style="text-align:left;"> Janthinobacterium svalbardensis </td>
+  </tr>
+  <tr>
+   <td style="text-align:left;"> 2593 </td>
+   <td style="text-align:left;"> 46679 </td>
+   <td style="text-align:left;"> Pseudomonas mucidolens </td>
+  </tr>
+  <tr>
+   <td style="text-align:left;"> 2718 </td>
+   <td style="text-align:left;"> 48296 </td>
+   <td style="text-align:left;"> Acinetobacter pittii </td>
+  </tr>
+  <tr>
+   <td style="text-align:left;"> 3087 </td>
+   <td style="text-align:left;"> 577 </td>
+   <td style="text-align:left;"> Raoultella terrigena </td>
+  </tr>
+  <tr>
+   <td style="text-align:left;"> 3235 </td>
+   <td style="text-align:left;"> 61646 </td>
+   <td style="text-align:left;"> Lelliottia amnigena </td>
+  </tr>
+  <tr>
+   <td style="text-align:left;"> 3372 </td>
+   <td style="text-align:left;"> 82987 </td>
+   <td style="text-align:left;"> Tatumella ptyseos </td>
+  </tr>
+  <tr>
+   <td style="text-align:left;"> 3492 </td>
+   <td style="text-align:left;"> 863372 </td>
+   <td style="text-align:left;"> Herbaspirillum huttiense </td>
+  </tr>
+</tbody>
+</table></div>
+
+</div>
+</div>
+</section>
+</section>
+<section id="inter-batch-effect-correction" class="level3">
+<h3 class="anchored" data-anchor-id="inter-batch-effect-correction">Inter-Batch effect correction</h3>
+<p>We apply ConQuR to correct batch effect across batches.</p>
+<div class="cell">
+
+</div>
+<p>First, we apply the batch correction on DNAex_round</p>
+<div class="cell">
+<details>
+<summary>Code</summary>
+<div class="sourceCode cell-code" id="cb29"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb29-1"><a href="#cb29-1" aria-hidden="true" tabindex="-1"></a><span class="co">#p.true.RmLowAbun.RmHLPrev.batchDNA &lt;- ConQur_apply(p.true.RmLowAbun.RmHLPrev, metadata, "DNAex_round","DNAex_round", 1)</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
+</div>
+</section>
+<section id="normalization-by-rarefaction" class="level3">
+<h3 class="anchored" data-anchor-id="normalization-by-rarefaction">Normalization by Rarefaction</h3>
+<p>First of all, we have a look at bacterial reads of each sample</p>
+<div class="cell">
+<details>
+<summary>Code</summary>
+<div class="sourceCode cell-code" id="cb30"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb30-1"><a href="#cb30-1" aria-hidden="true" tabindex="-1"></a><span class="fu">Inspect_SequencingDepth</span>(p.true.RmLowAbun.RmHLPrev)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
+<div class="cell-output-display">
+
+<div style="border: 1px solid #ddd; padding: 0px; overflow-y: scroll; height:600px; overflow-x: scroll; width:100%; "><table class="table table-striped table-hover table-condensed table-responsive lightable-classic" style="margin-left: auto; margin-right: auto; font-family: Cambria; width: auto !important; margin-left: auto; margin-right: auto;">
+<caption>Bacterial reads</caption>
+ <thead>
+  <tr>
+   <th style="text-align:right;position: sticky; top:0; background-color: #FFFFFF;"> value </th>
+   <th style="text-align:left;position: sticky; top:0; background-color: #FFFFFF;"> id </th>
+  </tr>
+ </thead>
+<tbody>
+  <tr>
+   <td style="text-align:right;"> 0 </td>
+   <td style="text-align:left;"> 440.normal </td>
+  </tr>
+  <tr>
+   <td style="text-align:right;"> 0 </td>
+   <td style="text-align:left;"> 452.normal </td>
+  </tr>
+  <tr>
+   <td style="text-align:right;"> 0 </td>
+   <td style="text-align:left;"> 467.normal </td>
+  </tr>
+  <tr>
+   <td style="text-align:right;"> 1 </td>
+   <td style="text-align:left;"> 438.tumor </td>
+  </tr>
+  <tr>
+   <td style="text-align:right;"> 1 </td>
+   <td style="text-align:left;"> 450.tumor </td>
+  </tr>
+  <tr>
+   <td style="text-align:right;"> 1 </td>
+   <td style="text-align:left;"> 456.normal </td>
+  </tr>
+  <tr>
+   <td style="text-align:right;"> 1 </td>
+   <td style="text-align:left;"> 457.normal </td>
+  </tr>
+  <tr>
+   <td style="text-align:right;"> 2 </td>
+   <td style="text-align:left;"> 462.tumor </td>
+  </tr>
+  <tr>
+   <td style="text-align:right;"> 4 </td>
+   <td style="text-align:left;"> 466.normal </td>
+  </tr>
+  <tr>
+   <td style="text-align:right;"> 6 </td>
+   <td style="text-align:left;"> 471.tumor </td>
+  </tr>
+  <tr>
+   <td style="text-align:right;"> 7 </td>
+   <td style="text-align:left;"> 437.tumor </td>
+  </tr>
+  <tr>
+   <td style="text-align:right;"> 8 </td>
+   <td style="text-align:left;"> 443.normal </td>
+  </tr>
+  <tr>
+   <td style="text-align:right;"> 11 </td>
+   <td style="text-align:left;"> 434.tumor </td>
+  </tr>
+  <tr>
+   <td style="text-align:right;"> 11 </td>
+   <td style="text-align:left;"> 475.tumor </td>
+  </tr>
+  <tr>
+   <td style="text-align:right;"> 16 </td>
+   <td style="text-align:left;"> 449.tumor </td>
+  </tr>
+  <tr>
+   <td style="text-align:right;"> 19 </td>
+   <td style="text-align:left;"> 473.tumor </td>
+  </tr>
+  <tr>
+   <td style="text-align:right;"> 20 </td>
+   <td style="text-align:left;"> 447.tumor </td>
+  </tr>
+  <tr>
+   <td style="text-align:right;"> 21 </td>
+   <td style="text-align:left;"> 444.normal </td>
+  </tr>
+  <tr>
+   <td style="text-align:right;"> 21 </td>
+   <td style="text-align:left;"> 446.tumor </td>
+  </tr>
+  <tr>
+   <td style="text-align:right;"> 23 </td>
+   <td style="text-align:left;"> 460.tumor </td>
+  </tr>
+  <tr>
+   <td style="text-align:right;"> 34 </td>
+   <td style="text-align:left;"> 445.normal </td>
+  </tr>
+  <tr>
+   <td style="text-align:right;"> 50 </td>
+   <td style="text-align:left;"> 435.tumor </td>
+  </tr>
+  <tr>
+   <td style="text-align:right;"> 67 </td>
+   <td style="text-align:left;"> 448.tumor </td>
+  </tr>
+  <tr>
+   <td style="text-align:right;"> 78 </td>
+   <td style="text-align:left;"> 474.tumor </td>
+  </tr>
+  <tr>
+   <td style="text-align:right;"> 100 </td>
+   <td style="text-align:left;"> 454.normal </td>
+  </tr>
+  <tr>
+   <td style="text-align:right;"> 104 </td>
+   <td style="text-align:left;"> 464.normal </td>
+  </tr>
+  <tr>
+   <td style="text-align:right;"> 105 </td>
+   <td style="text-align:left;"> 459.tumor </td>
+  </tr>
+  <tr>
+   <td style="text-align:right;"> 111 </td>
+   <td style="text-align:left;"> 436.tumor </td>
+  </tr>
+  <tr>
+   <td style="text-align:right;"> 132 </td>
+   <td style="text-align:left;"> 470.tumor </td>
+  </tr>
+  <tr>
+   <td style="text-align:right;"> 199 </td>
+   <td style="text-align:left;"> 476.normal </td>
+  </tr>
+  <tr>
+   <td style="text-align:right;"> 216 </td>
+   <td style="text-align:left;"> 477.normal </td>
+  </tr>
+  <tr>
+   <td style="text-align:right;"> 250 </td>
+   <td style="text-align:left;"> 458.tumor </td>
+  </tr>
+  <tr>
+   <td style="text-align:right;"> 295 </td>
+   <td style="text-align:left;"> 455.normal </td>
+  </tr>
+  <tr>
+   <td style="text-align:right;"> 313 </td>
+   <td style="text-align:left;"> 439.tumor </td>
+  </tr>
+  <tr>
+   <td style="text-align:right;"> 328 </td>
+   <td style="text-align:left;"> 472.tumor </td>
+  </tr>
+  <tr>
+   <td style="text-align:right;"> 332 </td>
+   <td style="text-align:left;"> 441.normal </td>
+  </tr>
+  <tr>
+   <td style="text-align:right;"> 402 </td>
+   <td style="text-align:left;"> 479.normal </td>
+  </tr>
+  <tr>
+   <td style="text-align:right;"> 479 </td>
+   <td style="text-align:left;"> 442.normal </td>
+  </tr>
+  <tr>
+   <td style="text-align:right;"> 509 </td>
+   <td style="text-align:left;"> 463.tumor </td>
+  </tr>
+  <tr>
+   <td style="text-align:right;"> 528 </td>
+   <td style="text-align:left;"> 481.normal </td>
+  </tr>
+  <tr>
+   <td style="text-align:right;"> 605 </td>
+   <td style="text-align:left;"> 330.tumor </td>
+  </tr>
+  <tr>
+   <td style="text-align:right;"> 840 </td>
+   <td style="text-align:left;"> 453.normal </td>
+  </tr>
+  <tr>
+   <td style="text-align:right;"> 1214 </td>
+   <td style="text-align:left;"> 334.tumor </td>
+  </tr>
+  <tr>
+   <td style="text-align:right;"> 1627 </td>
+   <td style="text-align:left;"> 469.normal </td>
+  </tr>
+  <tr>
+   <td style="text-align:right;"> 1675 </td>
+   <td style="text-align:left;"> 478.normal </td>
+  </tr>
+  <tr>
+   <td style="text-align:right;"> 1991 </td>
+   <td style="text-align:left;"> 335.tumor </td>
+  </tr>
+  <tr>
+   <td style="text-align:right;"> 2019 </td>
+   <td style="text-align:left;"> 327.tumor </td>
+  </tr>
+  <tr>
+   <td style="text-align:right;"> 2315 </td>
+   <td style="text-align:left;"> 480.normal </td>
+  </tr>
+  <tr>
+   <td style="text-align:right;"> 2403 </td>
+   <td style="text-align:left;"> 329.tumor </td>
+  </tr>
+  <tr>
+   <td style="text-align:right;"> 2849 </td>
+   <td style="text-align:left;"> 328.tumor </td>
+  </tr>
+  <tr>
+   <td style="text-align:right;"> 3020 </td>
+   <td style="text-align:left;"> 326.tumor </td>
+  </tr>
+  <tr>
+   <td style="text-align:right;"> 3879 </td>
+   <td style="text-align:left;"> 461.tumor </td>
+  </tr>
+  <tr>
+   <td style="text-align:right;"> 4439 </td>
+   <td style="text-align:left;"> 333.tumor </td>
+  </tr>
+  <tr>
+   <td style="text-align:right;"> 4818 </td>
+   <td style="text-align:left;"> 451.tumor </td>
+  </tr>
+  <tr>
+   <td style="text-align:right;"> 4872 </td>
+   <td style="text-align:left;"> 331.tumor </td>
+  </tr>
+  <tr>
+   <td style="text-align:right;"> 5276 </td>
+   <td style="text-align:left;"> 468.normal </td>
+  </tr>
+  <tr>
+   <td style="text-align:right;"> 15381 </td>
+   <td style="text-align:left;"> 332.tumor </td>
+  </tr>
+  <tr>
+   <td style="text-align:right;"> 17319 </td>
+   <td style="text-align:left;"> 465.normal </td>
+  </tr>
+</tbody>
+</table></div>
+
+</div>
+</div>
+<p>Rarefying curve</p>
+<div class="cell">
+<details>
+<summary>Code</summary>
+<div class="sourceCode cell-code" id="cb31"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb31-1"><a href="#cb31-1" aria-hidden="true" tabindex="-1"></a>tab <span class="ot">&lt;-</span> p.true.RmLowAbun.RmHLPrev <span class="sc">%&gt;%</span> <span class="fu">otu_table</span>() </span>
+<span id="cb31-2"><a href="#cb31-2" aria-hidden="true" tabindex="-1"></a><span class="fu">class</span>(tab) <span class="ot">&lt;-</span> <span class="st">"matrix"</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
+<div class="cell-output cell-output-stderr">
+<pre><code>Warning in class(tab) &lt;- "matrix": Setting class(x) to "matrix" sets attribute
+to NULL; result will no longer be an S4 object</code></pre>
+</div>
+<details>
+<summary>Code</summary>
+<div class="sourceCode cell-code" id="cb33"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb33-1"><a href="#cb33-1" aria-hidden="true" tabindex="-1"></a><span class="fu">rarecurve</span>(tab <span class="sc">%&gt;%</span> <span class="fu">t</span>(), <span class="at">step=</span><span class="dv">50</span>, <span class="at">cex=</span><span class="fl">0.5</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
+<div class="cell-output cell-output-stderr">
+<pre><code>empty rows removed</code></pre>
+</div>
+<div class="cell-output-display">
+<p><img src="Pipeline_StreamLine_files/figure-html/unnamed-chunk-25-1.png" class="img-fluid" width="672"></p>
+</div>
+</div>
+<p>Normalizing via rarefying</p>
+<div class="cell">
+<details>
+<summary>Code</summary>
+<div class="sourceCode cell-code" id="cb35"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb35-1"><a href="#cb35-1" aria-hidden="true" tabindex="-1"></a><span class="do">## rarifying</span></span>
+<span id="cb35-2"><a href="#cb35-2" aria-hidden="true" tabindex="-1"></a>sample.size <span class="ot">&lt;-</span> <span class="dv">1000</span></span>
+<span id="cb35-3"><a href="#cb35-3" aria-hidden="true" tabindex="-1"></a>seed <span class="ot">&lt;-</span> <span class="dv">1001</span></span>
+<span id="cb35-4"><a href="#cb35-4" aria-hidden="true" tabindex="-1"></a>p.true.M1.rar <span class="ot">&lt;-</span> <span class="fu">rarefy_even_depth</span>(<span class="at">physeq =</span> p.true.RmLowAbun.RmHLPrev, <span class="at">sample.size =</span> sample.size, <span class="at">rngseed =</span> seed)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
+<div class="cell-output cell-output-stderr">
+<pre><code>`set.seed(1001)` was used to initialize repeatable random subsampling.</code></pre>
+</div>
+<div class="cell-output cell-output-stderr">
+<pre><code>Please record this for your records so others can reproduce.</code></pre>
+</div>
+<div class="cell-output cell-output-stderr">
+<pre><code>Try `set.seed(1001); .Random.seed` for the full vector</code></pre>
+</div>
+<div class="cell-output cell-output-stderr">
+<pre><code>...</code></pre>
+</div>
+<div class="cell-output cell-output-stderr">
+<pre><code>42 samples removedbecause they contained fewer reads than `sample.size`.</code></pre>
+</div>
+<div class="cell-output cell-output-stderr">
+<pre><code>Up to first five removed samples are: </code></pre>
+</div>
+<div class="cell-output cell-output-stderr">
+<pre><code>434.tumor435.tumor436.tumor437.tumor438.tumor</code></pre>
+</div>
+<div class="cell-output cell-output-stderr">
+<pre><code>...</code></pre>
+</div>
+<div class="cell-output cell-output-stderr">
+<pre><code>230OTUs were removed because they are no longer 
+present in any sample after random subsampling</code></pre>
+</div>
+<div class="cell-output cell-output-stderr">
+<pre><code>...</code></pre>
+</div>
+</div>
+</section>
+</section>
+<section id="analysis" class="level2">
+<h2 class="anchored" data-anchor-id="analysis">Analysis</h2>
+<section id="composition-analysis" class="level3">
+<h3 class="anchored" data-anchor-id="composition-analysis">Composition Analysis</h3>
+<div class="cell">
+<details>
+<summary>Code</summary>
+<div class="sourceCode cell-code" id="cb46"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb46-1"><a href="#cb46-1" aria-hidden="true" tabindex="-1"></a><span class="fu">compositional_analysis</span>(p.true.M1.rar,<span class="st">"species"</span>, <span class="fl">0.04</span>, <span class="st">"M1.pdf"</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
+<div class="cell-output cell-output-stderr">
+<pre><code>Warning: The `size` argument of `element_rect()` is deprecated as of ggplot2 3.4.0.
+ℹ Please use the `linewidth` argument instead.</code></pre>
+</div>
+<details>
+<summary>Code</summary>
+<div class="sourceCode cell-code" id="cb48"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb48-1"><a href="#cb48-1" aria-hidden="true" tabindex="-1"></a><span class="fu">compositional_analysis</span>(p.true.M1.rar,<span class="st">"species"</span>, <span class="fl">0.04</span>, <span class="st">"M1.png"</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
+</div>
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><img src="M1.png" class="img-fluid figure-img"></p>
+<p></p><figcaption class="figure-caption">Composition analysis</figcaption><p></p>
+</figure>
+</div>
+</section>
+</section>
+</section>
+
+</main>
+<!-- /main column -->
+<script id="quarto-html-after-body" type="application/javascript">
+window.document.addEventListener("DOMContentLoaded", function (event) {
+  const toggleBodyColorMode = (bsSheetEl) => {
+    const mode = bsSheetEl.getAttribute("data-mode");
+    const bodyEl = window.document.querySelector("body");
+    if (mode === "dark") {
+      bodyEl.classList.add("quarto-dark");
+      bodyEl.classList.remove("quarto-light");
+    } else {
+      bodyEl.classList.add("quarto-light");
+      bodyEl.classList.remove("quarto-dark");
+    }
+  }
+  const toggleBodyColorPrimary = () => {
+    const bsSheetEl = window.document.querySelector("link#quarto-bootstrap");
+    if (bsSheetEl) {
+      toggleBodyColorMode(bsSheetEl);
+    }
+  }
+  toggleBodyColorPrimary();  
+  const icon = "";
+  const anchorJS = new window.AnchorJS();
+  anchorJS.options = {
+    placement: 'right',
+    icon: icon
+  };
+  anchorJS.add('.anchored');
+  const clipboard = new window.ClipboardJS('.code-copy-button', {
+    target: function(trigger) {
+      return trigger.previousElementSibling;
+    }
+  });
+  clipboard.on('success', function(e) {
+    // button target
+    const button = e.trigger;
+    // don't keep focus
+    button.blur();
+    // flash "checked"
+    button.classList.add('code-copy-button-checked');
+    var currentTitle = button.getAttribute("title");
+    button.setAttribute("title", "Copied!");
+    let tooltip;
+    if (window.bootstrap) {
+      button.setAttribute("data-bs-toggle", "tooltip");
+      button.setAttribute("data-bs-placement", "left");
+      button.setAttribute("data-bs-title", "Copied!");
+      tooltip = new bootstrap.Tooltip(button, 
+        { trigger: "manual", 
+          customClass: "code-copy-button-tooltip",
+          offset: [0, -8]});
+      tooltip.show();    
+    }
+    setTimeout(function() {
+      if (tooltip) {
+        tooltip.hide();
+        button.removeAttribute("data-bs-title");
+        button.removeAttribute("data-bs-toggle");
+        button.removeAttribute("data-bs-placement");
+      }
+      button.setAttribute("title", currentTitle);
+      button.classList.remove('code-copy-button-checked');
+    }, 1000);
+    // clear code selection
+    e.clearSelection();
+  });
+  function tippyHover(el, contentFn) {
+    const config = {
+      allowHTML: true,
+      content: contentFn,
+      maxWidth: 500,
+      delay: 100,
+      arrow: false,
+      appendTo: function(el) {
+          return el.parentElement;
+      },
+      interactive: true,
+      interactiveBorder: 10,
+      theme: 'quarto',
+      placement: 'bottom-start'
+    };
+    window.tippy(el, config); 
+  }
+  const noterefs = window.document.querySelectorAll('a[role="doc-noteref"]');
+  for (var i=0; i<noterefs.length; i++) {
+    const ref = noterefs[i];
+    tippyHover(ref, function() {
+      // use id or data attribute instead here
+      let href = ref.getAttribute('data-footnote-href') || ref.getAttribute('href');
+      try { href = new URL(href).hash; } catch {}
+      const id = href.replace(/^#\/?/, "");
+      const note = window.document.getElementById(id);
+      return note.innerHTML;
+    });
+  }
+  const findCites = (el) => {
+    const parentEl = el.parentElement;
+    if (parentEl) {
+      const cites = parentEl.dataset.cites;
+      if (cites) {
+        return {
+          el,
+          cites: cites.split(' ')
+        };
+      } else {
+        return findCites(el.parentElement)
+      }
+    } else {
+      return undefined;
+    }
+  };
+  var bibliorefs = window.document.querySelectorAll('a[role="doc-biblioref"]');
+  for (var i=0; i<bibliorefs.length; i++) {
+    const ref = bibliorefs[i];
+    const citeInfo = findCites(ref);
+    if (citeInfo) {
+      tippyHover(citeInfo.el, function() {
+        var popup = window.document.createElement('div');
+        citeInfo.cites.forEach(function(cite) {
+          var citeDiv = window.document.createElement('div');
+          citeDiv.classList.add('hanging-indent');
+          citeDiv.classList.add('csl-entry');
+          var biblioDiv = window.document.getElementById('ref-' + cite);
+          if (biblioDiv) {
+            citeDiv.innerHTML = biblioDiv.innerHTML;
+          }
+          popup.appendChild(citeDiv);
+        });
+        return popup.innerHTML;
+      });
+    }
+  }
+});
+</script>
+</div> <!-- /content -->
+
+
+
+</body></html>
