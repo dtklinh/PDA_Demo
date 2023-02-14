@@ -2085,24 +2085,33 @@ p.comb.filt.s.new <- merge_phyloseq(p.true.filt.s.prev,physeq.filt.nct.s) #merge
 p.comb.filt.s.new <- tax_glom(physeq = p.comb.filt.s.new,taxrank = "species", NArm = TRUE) #agglomerate all taxa to species level 
 
 #the following approach (next to lines) does not seem to work. Try something new.
-sd.new <- meta(p.comb.filt.s.new) %>% left_join(df)
-rownames(sd.new) <- sd.new$id
-#we try
-left_join(meta(p.comb.filt.s.new), df, by = colnames(meta(p.comb.filt.s.new))[1:10])
+# sd.new <- meta(p.comb.filt.s.new) %>% left_join(df)
+# rownames(sd.new) <- sd.new$id
+# #we try
+# left_join(meta(p.comb.filt.s.new), df, by = colnames(meta(p.comb.filt.s.new))[1:10])
 #this yields sub-optimal results: issues are different column names + different data types
 
 #new idea: take sample data from p.comb.filt.s.new and expand it manually...
-sd.new <- meta(p.comb.filt.s.new)
+# sd.new <- meta(p.comb.filt.s.new)
+# sd.new$DNAex_round <- df$DNAex_round
+# sd.new$PCR_round <- df$PCR_round
+# rownames(sd.new) <- sd.new$id
+# sample 491.paraffin_tumor has 2 entries for DNAex_round {"4_5"}
+# p.comb.filt.s.new <- merge_phyloseq(otu_table(p.comb.filt.s.new), tax_table(p.comb.filt.s.new), sample_data(sd.new))
+#as merging does not work, we can modifiy sample_data directly - even easier:
+# remember to manage ordering
+sd.new <- meta(p.comb.filt.s.new) %>% arrange(uniqueID)
+df <- df %>% arrange(uniqueID)
 sd.new$DNAex_round <- df$DNAex_round
 sd.new$PCR_round <- df$PCR_round
 rownames(sd.new) <- sd.new$id
-# sample 491.paraffin_tumor has 2 entries for DNAex_round {"4_5"}
+
 p.comb.filt.s.new <- merge_phyloseq(otu_table(p.comb.filt.s.new), tax_table(p.comb.filt.s.new), sample_data(sd.new))
-#as merging does not work, we can modifiy sample_data directly - even easier:
-sample_data(p.comb.filt.s.new)$DNAex_round <- df$DNAex_round
-sample_data(p.comb.filt.s.new)$PCR_round <- df$PCR_round
+
 # sample data updated 
-sample_data(physeq.nct)$sample_side <- ifelse(sample_data(physeq.nct)$sample_side == "paraffin", "paraffin_tumor", sample_data(physeq.nct)$sample_side) #modify sample side
+sample_data(p.comb.filt.s.new)$sample_side <- ifelse(sample_data(p.comb.filt.s.new)$sample_side == "paraffin", "paraffin_tumor", sample_data(p.comb.filt.s.new)$sample_side) #modify sample side
+
+view(meta(p.comb.filt.s.new))
 
 # remember to remove negative controls based on low read-count:
 # Plan: create subset containing nct samples / calculate sample_sums / define samples to be removed / remove these samples from bigger phyloseq-obj
@@ -2134,26 +2143,602 @@ sort(sample_sums(p.comb.new.nct),decreasing = FALSE) # sum of counts for nct
 
 #Anyway
 # Filter 1
+#perform filter1
+p.comb.new.true <- subset_samples(p.comb.filt.s.new, TRUE_control == "TRUE") # only true samples
+p.comb.new.nct <- subset_samples(p.comb.filt.s.new, TRUE_control == "control") # only negative samples
+  #plot how many taxa are present in atleast x% of negative controls
+prev_ntc = tibble(
+  prev.ntc = prevalence(p.comb.new.nct, detection  = 0, sort = TRUE, count = FALSE),
+  OTU =as.factor(names(prevalence(p.comb.new.nct , detection = 0, sort = TRUE, count = FALSE))) 
+)
 
+prev_true = tibble(
+  prev.true = prevalence(p.comb.new.true, detection  = 0, sort = TRUE, count = FALSE),
+  OTU =as.factor(names(prevalence(p.comb.new.true , detection = 0, sort = TRUE, count = FALSE))) 
+)
+
+prev <- prev_true %>% 
+  left_join(prev_ntc) %>% 
+  mutate(prev.ntc = ifelse(is.na(prev.ntc), 0, prev.ntc),
+         prev.true = ifelse(is.na(prev.true), 0, prev.true))
+
+prev_count <- prev %>%
+  count(prev.ntc) %>%
+  mutate(prop = n/nrow(prev))
+
+# p.comb.filt.s.prev.rel <- transform_sample_counts(p.comb.filt.s.prev, function(x){x/sum(x)})
+# df <- psmelt(p.comb.filt.s.prev.rel)
+# abu <- df %>% group_by(OTU) %>% 
+#   summarise(across(Abundance, mean)) 
+
+# prev_abu <- left_join(abu, prev) %>% 
+#   mutate(prev = ifelse(is.na(prev), 0, prev)) %>% 
+#   arrange (-Abundance) %>% as_tibble()
+
+
+ggplot(prev_count, aes(x= prev.ntc, y = prop))+
+  geom_point()+
+  xlab ("Relative prevalence of species in controls") +
+  ylab("Proportion bacteria") +
+  theme_bw() +
+  ggtitle("Pervalence - Abundance Distribution")+
+  theme( axis.text.x = element_text(size=12),
+        axis.text.y = element_text (size=12),
+        axis.title = element_text(size=14, face="bold"))+
+  theme(legend.position = "bottom",
+        legend.title = element_blank(),
+        legend.background = element_rect(size=0.25, linetype="solid", colour ="black"),
+        legend.key.size = unit(4,"mm"))
+
+prev_count.mod <- prev %>% # rebuild "prev_count" object 
+  count(prev.ntc) %>% # rebuild "prev_count" object 
+  mutate(prop = n/nrow(prev)) %>% # rebuild "prev_count" object 
+  arrange(-prev.ntc) %>% #orders the tibble starting with highest prev.ntc value and ending with lowest prev.ntc
+  mutate(csum = cumsum(n)) %>% #create column containing the cumulative sum of n
+  mutate(cumprop = csum/nrow(prev)) # take the cumsum and divide by the amount of taxa
+# Idea behind this:
+# In previous plots we used to plot the exact number / proportion of bacteria contained in x% of negative controls yielding nejman.figure.jpg / Graph 1 in notepad.
+# Now we plot the proportion of bacteria contained in at least x% of negative controls.
+# x = % of negative controls | y = (sum of all bacteria present in more than x negative controls + bacteria present in x negative controls) / (all bacteria)
+
+
+ggplot(prev_count.mod, aes(x= prev.ntc, y = cumprop))+
+  geom_point()+
+  xlab ("% negative controls") +
+  ylab("Proportion bacteria") +
+  theme_bw() +
+  ggtitle("% of bacteria in at least x ntc - % of negative controls included")+
+  theme( axis.text.x = element_text(size=12),
+        axis.text.y = element_text (size=12),
+        axis.title = element_text(size=14, face="bold"))+
+  theme(legend.position = "bottom",
+        legend.title = element_blank(),
+        legend.background = element_rect(size=0.25, linetype="solid", colour ="black"),
+        legend.key.size = unit(4,"mm"))
+
+filter <- 0.5 #CP setting threshold to 50%
+filtered_taxa1 <- tibble(
+  Cont = genefilter_sample(p.comb.new.nct, filterfun_sample(function(x) x > 0), A=filter*nsamples(p.comb.new.nct)),
+  OTU = names(genefilter_sample(p.comb.new.nct, filterfun_sample(function(x) x > 0), A=filter*nsamples(p.comb.new.nct)))
+) # this keeps ordering of taxa in line with taxonomyTable
+head(!(filtered_taxa1$Cont))
+
+p.comb.filt.s.new <- subset_taxa(p.comb.filt.s.new, !(filtered_taxa1$Cont))
 # filter2??
+#normal binom.test setup as done before
+p.comb.pcr <- subset_samples(p.comb.filt.s.new, sample_side == "PCR_ctrl_H2O" | TRUE_control == "TRUE")
+p.comb.buffer <- subset_samples(p.comb.filt.s.new, sample_side == "buffer" | TRUE_control == "TRUE")
+p.comb.paraffin <- subset_samples(p.comb.filt.s.new, sample_side == "paraffin_tumor" |  sample_side == "paraffin_normal" | TRUE_control == "TRUE")
+
+# start testing via binomial for taxa prevalence
+# CP starts here
+# testing binomial for taxa prevalent in paraffin
+
+#p.comb.paraffin contains: /n samples:: all TRUE_samples, all paraffin_ntc /n taxa:: all taxa from p.comb.filt.s.prev MINUS taxa from cont.filt1
+
+p.comb.paraffin.true <- subset_samples(p.comb.paraffin, TRUE_control == "TRUE") #only true samples
+p.comb.paraffin.ntc <- subset_samples(p.comb.paraffin, TRUE_control == "control") #only ntc from sample_side
+
+# x = amount of true_samples where species is present
+# n = amount of true_samples considered
+# p = (amount of control_samples where is species is present) / (amount of control_samples considered)
+bin.data.paraffin <- data.frame(x = prevalence(p.comb.paraffin.true, detection = 0, count = TRUE),
+       n = nsamples(p.comb.paraffin.true),
+       p = prevalence(p.comb.paraffin.ntc, detection = 0, count = FALSE))
+
+vec0 <- seq(1,nrow(bin.data.paraffin)) #vector to cycle thru for binom.test
+
+for (i in vec0) {
+  vec0[i] <- binom.test(x = bin.data.paraffin[i,1],n = bin.data.paraffin[i,2],p = bin.data.paraffin[i,3],alternative = "greater")$p.value
+} #perform binom.test. fetch needed data from row in bin.data.paraffin. store p.value from binom.test in vector: index in vector corresponds to row from bin.data.paraffin 
+
+bin.data.paraffin$p.value <- vec0 #add vec0 {containing p.values from binom.test} to bin.data.paraffin as a column 
+head(bin.data.paraffin) #check bin.data.paraffin
+bin.data.paraffin <- bin.data.paraffin %>% mutate(sig_p <- if_else(p.value < 0.05, TRUE, FALSE)) #add column indicating {TRUE / FALSE} if p.value is below 5%
+colnames(bin.data.paraffin)[5] <- "sign.p" #rename indicator column as sign.p
+
+# testing binomial for taxa prevalent in buffer
+
+#p.comb.buffer contains: /n samples:: all TRUE_samples, all buffer:ntc /n taxa:: all taxa from p.comb.filt.s.prev MINUS taxa from cont.filt1
+
+p.comb.buffer.true <- subset_samples(p.comb.buffer, TRUE_control == "TRUE") #only true samples
+p.comb.buffer.ntc <- subset_samples(p.comb.buffer, TRUE_control == "control") #only ntc from sample_side
+
+# x = amount of true_samples where species is present
+# n = amount of true_samples considered
+# p = (amount of control_samples where is species is present) / (amount of control_samples considered)
+bin.data.buffer <- data.frame(x = prevalence(p.comb.buffer.true, detection = 0, count = TRUE),
+       n = nsamples(p.comb.buffer.true),
+       p = prevalence(p.comb.buffer.ntc, detection = 0, count = FALSE))
+
+vec0 <- seq(1,nrow(bin.data.buffer)) #vector to cycle thru for binom.test
+
+for (i in vec0) {
+  vec0[i] <- binom.test(x = bin.data.buffer[i,1],n = bin.data.buffer[i,2],p = bin.data.buffer[i,3],alternative = "greater")$p.value
+} #perform binom.test. fetch needed data from row in bin.data.buffer. store p.value from binom.test in vector: index in vector corresponds to row from bin.data.buffer 
+
+bin.data.buffer$p.value <- vec0 #add vec0 {containing p.values from binom.test} to bin.data.buffer as a column 
+head(bin.data.buffer) #check bin.data.buffer
+bin.data.buffer <- bin.data.buffer %>% mutate(sig_p <- if_else(p.value < 0.05, TRUE, FALSE)) #add column indicating {TRUE / FALSE} if p.value is below 5%
+colnames(bin.data.buffer)[5] <- "sign.p" #rename indicator column as sign.p
+head(bin.data.buffer)
+
+# testing binomial for taxa prevalent in pcr
+
+#p.comb.pcr contains: /n samples:: all TRUE_samples, all pcr:ntc /n taxa:: all taxa from p.comb.filt.s.prev MINUS taxa from cont.filt1
+
+p.comb.pcr.true <- subset_samples(p.comb.pcr, TRUE_control == "TRUE") #only true samples
+p.comb.pcr.ntc <- subset_samples(p.comb.pcr, TRUE_control == "control") #only ntc from sample_side
+
+# x = amount of true_samples where species is present
+# n = amount of true_samples considered
+# p = (amount of control_samples where is species is present) / (amount of control_samples considered)
+bin.data.pcr <- data.frame(x = prevalence(p.comb.pcr.true, detection = 0, count = TRUE),
+       n = nsamples(p.comb.pcr.true),
+       p = prevalence(p.comb.pcr.ntc, detection = 0, count = FALSE))
+
+vec0 <- seq(1,nrow(bin.data.pcr)) #vector to cycle thru for binom.test
+
+for (i in vec0) {
+  vec0[i] <- binom.test(x = bin.data.pcr[i,1],n = bin.data.pcr[i,2],p = bin.data.pcr[i,3],alternative = "greater")$p.value
+} #perform binom.test. fetch needed data from row in bin.data.pcr. store p.value from binom.test in vector: index in vector corresponds to row from bin.data.pcr 
+
+bin.data.pcr$p.value <- vec0 #add vec0 {containing p.values from binom.test} to bin.data.pcr as a column 
+head(bin.data.pcr) #check bin.data.pcr
+bin.data.pcr <- bin.data.pcr %>% mutate(sig_p <- if_else(p.value < 0.05, TRUE, FALSE)) #add column indicating {TRUE / FALSE} if p.value is below 5%
+colnames(bin.data.pcr)[5] <- "sign.p" #rename indicator column as sign.p
+head(bin.data.pcr)
+
+
+#idea: only the last 10 samples are an issue {326 - 335} we use the controls with same DNAex_round & PCR_round attributes
+
+p.comb.6_8 <- subset_samples(p.comb.filt.s.new, DNAex_round == "6")
+
+#create subsets for binom.test
+p.comb.6_8.true <- subset_samples(p.comb.6_8, TRUE_control == "TRUE") #only true samples
+p.comb.6_8.nct <- subset_samples(p.comb.6_8, TRUE_control == "control")
+p.comb.6_8.ntc.buffer <- subset_samples(p.comb.6_8.nct, sample_side == "buffer") #only buffer nct 
+p.comb.6_8.ntc.paraffin <- subset_samples(p.comb.6_8.nct, sample_side == "paraffin_tumor") # only paraffin nct
+
+#perform binom.test for true_paraffin
+# x = amount of true_samples where species is present
+# n = amount of true_samples considered
+# p = (amount of control_samples where is species is present) / (amount of control_samples considered)
+bin.data.true_paraffin68 <- data.frame(x = prevalence(p.comb.6_8.true, detection = 0, count = TRUE),
+       n = nsamples(p.comb.6_8.true),
+       p = prevalence(p.comb.6_8.ntc.paraffin, detection = 0, count = FALSE))
+
+vec0 <- seq(1,nrow(bin.data.true_paraffin68)) #vector to cycle thru for binom.test
+
+for (i in vec0) {
+  vec0[i] <- binom.test(x = bin.data.true_paraffin68[i,1],n = bin.data.true_paraffin68[i,2],p = bin.data.true_paraffin68[i,3],alternative = "greater")$p.value
+} #perform binom.test. fetch needed data from row in bin.data.true_paraffin68. store p.value from binom.test in vector: index in vector corresponds to row from bin.data.true_paraffin68 
+
+bin.data.true_paraffin68$p.value <- vec0 #add vec0 {containing p.values from binom.test} to bin.data.true_paraffin68 as a column 
+head(bin.data.true_paraffin68) #check bin.data.true_paraffin68
+bin.data.true_paraffin68 <- bin.data.true_paraffin68 %>% mutate(sig_p <- if_else(p.value < 0.05, TRUE, FALSE)) #add column indicating {TRUE / FALSE} if p.value is below 5%
+colnames(bin.data.true_paraffin68)[5] <- "sign.p" #rename indicator column as sign.p
 
 
 
+#perform binom.test for true_buffer
+# x = amount of true_samples where species is present
+# n = amount of true_samples considered
+# p = (amount of control_samples where is species is present) / (amount of control_samples considered)
+bin.data.true_buffer68 <- data.frame(x = prevalence(p.comb.6_8.true, detection = 0, count = TRUE),
+       n = nsamples(p.comb.6_8.true),
+       p = prevalence(p.comb.6_8.ntc.buffer, detection = 0, count = FALSE))
+
+vec0 <- seq(1,nrow(bin.data.true_buffer68)) #vector to cycle thru for binom.test
+
+for (i in vec0) {
+  vec0[i] <- binom.test(x = bin.data.true_buffer68[i,1],n = bin.data.true_buffer68[i,2],p = bin.data.true_buffer68[i,3],alternative = "greater")$p.value
+} #perform binom.test. fetch needed data from row in bin.data.true_buffer68. store p.value from binom.test in vector: index in vector corresponds to row from bin.data.true_buffer68 
+
+bin.data.true_buffer68$p.value <- vec0 #add vec0 {containing p.values from binom.test} to bin.data.true_buffer68 as a column 
+head(bin.data.true_buffer68) #check bin.data.true_buffer68
+bin.data.true_buffer68 <- bin.data.true_buffer68 %>% mutate(sig_p <- if_else(p.value < 0.05, TRUE, FALSE)) #add column indicating {TRUE / FALSE} if p.value is below 5%
+colnames(bin.data.true_buffer68)[5] <- "sign.p" #rename indicator column as sign.p
+
+pvaluedf <- data.frame(paraffin = bin.data.paraffin$sign.p,
+                       buffer = bin.data.buffer$sign.p,
+                       pcr = bin.data.pcr$sign.p,
+                       true_buffer68 = bin.data.true_buffer68$sign.p,
+                       true_paraffin68 = bin.data.true_paraffin68$sign.p,
+                       row.names = rownames(bin.data.paraffin))
+pvaluedf <- pvaluedf %>% filter(paraffin == TRUE & buffer == TRUE & pcr == TRUE & true_buffer68 == TRUE & true_paraffin68 == TRUE)
+
+improvise.p <- subset_samples(p.comb.filt.s.new, TRUE_control == "TRUE")
+improvise.p <- prune_taxa(taxa = row.names(pvaluedf),x = improvise.p)
+
+plot(y = sample_sums(improvise.p),x = seq(1,nsamples(improvise.p)), xlab = "Sample index", ylab= "Seq-depth", main= "true samples post PERFect/Nejman")
+
+sample_sums(improvise.p)
+
+physeq.fam <- transform_sample_counts(improvise.p, function(x){x/sum(x)})
+df.fam.melt <- psmelt(physeq.fam ) 
+
+df.fam.melt$species.v2 <- ifelse(df.fam.melt$Abundance>.1,as.character(df.fam.melt$species), "others")
+df.fam.melt$species.v2 <- factor(df.fam.melt$species.v2, levels=rev(unique(df.fam.melt$species.v2)))
+cols <- c("#9d547c","#56ca63","#a357d6","#419d2a","#525fd6","#8cbe3a","#c944aa","#5ba557","#9e66cb","#c1b735","#6d82ec","#e69728","#6654b0","#799330","#da7fdf","#3c782c","#e44586","#63c996","#dc3f53","#49cbc8","#cf3f29","#4fabda","#da6c2b","#598bd1","#b78c24","#8d4191","#a0b971","#b2386a","#479d71","#ae4341","#2ba198","#e07557","#5361a3","#dda353","#aa98df","#5b6114","#dc89bf","#327243","#e57b94","#277257","#9b62a0","#bbab59","#98495a","#526229","#d8827d","#857624","#9a4a22","#7c7d46","#e3a073","#9e6b33", "lawngreen", "orchid2", "olivedrab1", "ivory3", "darkseagreen", "bisque2", "darkgoldenrod2", "blue2", "skyblue", "seashell2", "turquoise", "tan1", "seagreen2", "palevioletred3", "linen", "steelblue4", "limegreen", "purple3", "khaki3", "snow3", "darkslategray", "magenta2", "palegreen", "salmon", "maroon", "cyan2")
 
 
+ggplot(df.fam.melt, aes(x=id, y=Abundance, fill=species.v2)) +
+  geom_bar(stat="identity") +
+  scale_y_continuous(labels = scales::percent, expand = c(0, 0), limits = c(0, 1.02)) +
+  scale_fill_manual(values = cols) +
+  xlab ("") +
+  ylab("Relative abundance") +
+  theme_bw() +
+  ggtitle("Microbial composition at species level")+
+  theme( axis.text.x = element_blank(),
+        axis.text.y = element_text (size=12),
+        axis.title = element_text(size=14, face="bold"))+
+  theme(legend.position = "bottom",
+        legend.title = element_blank(),
+        legend.background = element_rect(size=0.25, linetype="solid", colour ="black"),
+        legend.key.size = unit(4,"mm"))
+
+#post meeting (06.12)
+
+#filter1: buffer & DNAex_round
+#a <- unique(meta(p.comb.filt.s.new)$DNAex_round) small prob: this contains "NA" & "4_5"
+# a <- c("1","2","3","4","5","6","7") #just {07.12.22 realised: a == seq(1,length(a))}
+# df.p1 <- data.frame(matrix(data = 0,nrow = ntaxa(p.comb.filt.s.new),ncol = length(a)))
+# for (i in seq(1,length(a))) {
+#   b <- subset_samples(p.comb.filt.s.new,DNAex_round == a[i])
+#   b.buffer <- subset_samples(b, sample_side == "buffer")
+#   b.true <- subset_samples(b, TRUE_control == "TRUE")
+#   df.filt <- data.frame(x = prevalence(b.true, detection = 0, count = TRUE),
+#                         n = nsamples(b.true),
+#                         p = prevalence(b.buffer, detection = 0, count = FALSE))
+#   vec <- seq(1,nrow(df.p1))
+#   for (j in vec) {
+#     vec[j] <- binom.test(x = df.filt[j,"x"], n = df.filt[j,"n"], p = df.filt[j,"p"],alternative = "greater")$p.value
+#   }
+#   df.p1[,i] <- vec
+# }
+# # 
+
+bad_taxa <- list()
+if( !require(rlist) ){
+  install.packages(rlist)
+}
+library(rlist)
+IDs <- unique(meta(p.comb.filt.s.new)$DNAex_round)
+df.condition1.meta <- as.data.frame(matrix(0,nrow = 4,ncol = length(IDs)),row.names = c("n_true_samples","n_nct_samples","n_condition_nct_samples","batch_name"))
+vec0 <- rep(0,length(IDs))
+for (i in seq(1,length(IDs))) {
+  vec0[i] <- paste0("c1","b",i)
+}
+colnames(df.condition1.meta) <- vec0
+for (i in seq(1,length(IDs))) {
+  b <- subset_samples(p.comb.filt.s.new, DNAex_round == IDs[i])
+  b <- prune_taxa(taxa = (taxa_names(b)[-which(taxa_sums(b) == 0)]),x = b) #this removes taxa with taxa_sums == 0
+  check1 <- length(which(meta(b)$TRUE_control == "TRUE")) #checks whether the batch contains true_samples
+  check2 <- length(which(meta(b)$TRUE_control == "control")) #checks whether the batch contains nct_sample
+  check3 <- length(which(meta(b)$sample_side == "buffer")) #checks whether the batch contains condition_nct_samples
+  df.condition1.meta[1,i] <- check1
+  df.condition1.meta[2,i] <- check2
+  df.condition1.meta[3,i] <- check3
+  df.condition1.meta[4,i] <- IDs[i]
+  if (check1 == 0) {
+    print(paste0("check1 :",IDs[i]))
+    next}
+  if (check2 == 0) {
+    print(paste0("check2 :",IDs[i]))
+    next}
+  if (check3 == 0) {
+    print(paste0("check3 :",IDs[i]))
+    next}
+  b.true <- subset_samples(b,TRUE_control == "TRUE") # defines subset consisting of true samples from the batch
+  b.condition <- subset_samples(b,sample_side == "buffer") # defines subset consisting of nct samples from the batch
+  b <- merge_phyloseq(b.true,b.condition) # we take the subsets we want, merge them to allow for thorough removal of bacteria
+  if (length(which(taxa_sums(b) == 0)) != 0) {
+    b <- prune_taxa(taxa = (taxa_names(b)[-which(taxa_sums(b) == 0)]),x = b) #this removes taxa with taxa_sums == 0
+  }
+  b.true <- subset_samples(b,TRUE_control == "TRUE") 
+  b.condition <- subset_samples(b,sample_side == "buffer") # Im honest: this is a bit redundant
+  df.filt <- data.frame(x = prevalence(b.true, detection = 0, count = TRUE),
+                        n = nsamples(b.true),
+                        p = prevalence(b.condition, detection = 0, count = FALSE))
+  vec <- seq(1,nrow(df.filt))
+  for (j in vec) {
+    vec[j] <- binom.test(x = df.filt[j,"x"], n = df.filt[j,"n"], p = df.filt[j,"p"],alternative = "greater")$p.value
+  }
+  y <- paste0("df.filt1-",i)
+  assign(y,df.filt)
+  df.p1 <- data.frame(id = rownames(df.filt),
+                     pvalue = vec)
+  x <- paste0("df.p1-",i)
+  assign(x,df.p1)
+}
+bad_taxa <- list.append(bad_taxa,`df.p1-1`[which(x = `df.p1-1`$pvalue >= 0.05),1])
+bad_taxa <- list.append(bad_taxa,`df.p1-2`[which(x = `df.p1-2`$pvalue >= 0.05),1])
+bad_taxa <- list.append(bad_taxa,`df.p1-3`[which(x = `df.p1-3`$pvalue >= 0.05),1])
+bad_taxa <- list.append(bad_taxa,`df.p1-4`[which(x = `df.p1-4`$pvalue >= 0.05),1])
+bad_taxa <- list.append(bad_taxa,`df.p1-5`[which(x = `df.p1-5`$pvalue >= 0.05),1])
+bad_taxa <- list.append(bad_taxa,`df.p1-6`[which(x = `df.p1-6`$pvalue >= 0.05),1])
+
+
+
+#small feedback: DNAex_round 7 does NOT have buffer nct_samples 
+#with no buffer for DNAex_round 7, by default all taxa in batch 7 have p.values = 0 {are significant by default}
+
+#filter2: PCR_ctrl_H2O & PCR_round
+#a <- unique(meta(p.comb.filt.s.new)$PCR_round) # PCR_round 1, 8 & 9 have no nct comparison
+# a <- as.numeric(c(meta(subset_samples(p.comb.filt.s.new, sample_side == "PCR_ctrl_H2O"))$sample_nr,"1","8","9"))
+# df.p2 <- data.frame(matrix(data = 0,nrow = ntaxa(p.comb.filt.s.new),ncol = length(a)))
+# for (i in a) {
+#   b <- subset_samples(p.comb.filt.s.new,PCR_round == i)
+#   b.pcr <- subset_samples(b, sample_side == "PCR_ctrl_H2O")
+#   b.true <- subset_samples(b, TRUE_control == "TRUE")
+#   df.filt <- data.frame(x = prevalence(b.true, detection = 0, count = TRUE),
+#                         n = nsamples(b.true),
+#                         p = prevalence(b.pcr, detection = 0, count = FALSE))
+#   vec <- seq(1,nrow(df.p2))
+#   for (j in vec) {
+#     vec[j] <- binom.test(x = df.filt[j,"x"], n = df.filt[j,"n"], p = df.filt[j,"p"],alternative = "greater")$p.value
+#   }
+#   df.p2[,i] <- vec
+# } # does not work! True samples only in PCR_round 1,2,8 - we have nct samples for PCR_round 2,3,4,5,6,7 {nct for round 1 filtered out}
+# new approach: we need to use more samples and see whether something works {re-write code to include nct 532 and then perform loop for 1,2 - 8 has NO nct samples sequenced alongside it}
+
+IDs <- unique(meta(p.comb.filt.s.new)$PCR_round)
+df.condition2.meta <- as.data.frame(matrix(0,nrow = 4,ncol = length(IDs)),row.names = c("n_true_samples","n_nct_samples","n_condition_nct_samples","batch_name"))
+vec0 <- rep(0,length(IDs))
+for (i in seq(1,length(IDs))) {
+  vec0[i] <- paste0("c2","b",i)
+}
+colnames(df.condition2.meta) <- vec0
+for (i in seq(1,length(IDs))) {
+  b <- subset_samples(p.comb.filt.s.new, PCR_round == IDs[i])
+  b <- prune_taxa(taxa = (taxa_names(b)[-which(taxa_sums(b) == 0)]),x = b) #this removes taxa with taxa_sums == 0
+  check1 <- length(which(meta(b)$TRUE_control == "TRUE")) #checks whether the batch contains true_samples
+  check2 <- length(which(meta(b)$TRUE_control == "control")) #checks whether the batch contains nct_sample
+  check3 <- length(which(meta(b)$sample_side == "PCR_ctrl_H2O")) #checks whether the batch contains condition_nct_samples
+  df.condition2.meta[1,i] <- check1
+  df.condition2.meta[2,i] <- check2
+  df.condition2.meta[3,i] <- check3
+  df.condition2.meta[4,i] <- IDs[i]
+  if (check1 == 0) {
+    print(paste0("check1 :",IDs[i]))
+    next}
+  if (check2 == 0) {
+    print(paste0("check2 :",IDs[i]))
+    next}
+  if (check3 == 0) {
+    print(paste0("check3 :",IDs[i]))
+    next}
+  b.true <- subset_samples(b,TRUE_control == "TRUE") # defines subset consisting of true samples from the batch
+  b.condition <- subset_samples(b,sample_side == "PCR_ctrl_H2O") # defines subset consisting of nct samples from the batch
+  b <- merge_phyloseq(b.true,b.condition) # we take the subsets we want, merge them to allow for thorough removal of bacteria
+  if (length(which(taxa_sums(b) == 0)) != 0) {
+    b <- prune_taxa(taxa = (taxa_names(b)[-which(taxa_sums(b) == 0)]),x = b) #this removes taxa with taxa_sums == 0
+  }
+  b.true <- subset_samples(b,TRUE_control == "TRUE") 
+  b.condition <- subset_samples(b,sample_side == "PCR_ctrl_H2O") # Im honest: this is a bit redundant
+  df.filt <- data.frame(x = prevalence(b.true, detection = 0, count = TRUE),
+                        n = nsamples(b.true),
+                        p = prevalence(b.condition, detection = 0, count = FALSE))
+  vec <- seq(1,nrow(df.filt))
+  for (j in vec) {
+    vec[j] <- binom.test(x = df.filt[j,"x"], n = df.filt[j,"n"], p = df.filt[j,"p"],alternative = "greater")$p.value
+  }
+  y <- paste0("df.filt2-",i)
+  assign(y,df.filt)
+  df.p2 <- data.frame(id = rownames(df.filt),
+                     pvalue = vec)
+  x <- paste0("df.p2-",i)
+  assign(x,df.p2)
+}
+
+bad_taxa <- list.append(bad_taxa,`df.p2-1`[which(x = `df.p2-1`$pvalue >= 0.05),1])
+bad_taxa <- list.append(bad_taxa,`df.p2-2`[which(x = `df.p2-2`$pvalue >= 0.05),1])
+
+
+#filter3: paraffin & all samples
+#idea: compare true normal samples with paraffin_normal | true tumor samples with paraffin_tumor VS. true samples with paraffin samples
+df.condition3.meta <- as.data.frame(matrix(0,nrow = 4,ncol = 1),row.names = c("n_true_samples","n_nct_samples","n_condition_nct_samples","batch_name"))
+
+p.comb.paraffin <- subset_samples(p.comb.filt.s.new, sample_side == "paraffin_tumor" |  sample_side == "paraffin_normal" | TRUE_control == "TRUE") # true samples & paraffin nct samples
+if (length(which(taxa_sums(p.comb.paraffin) == 0)) != 0) {
+    p.comb.paraffin <- prune_taxa(taxa = (taxa_names(p.comb.paraffin)[-which(taxa_sums(p.comb.paraffin) == 0)]),x = p.comb.paraffin) #this removes taxa with taxa_sums == 0
+}
+df.condition3.meta[2,1] <- nsamples(subset_samples(p.comb.filt.s.new,TRUE_control == "control"))
+p.comb.paraffin.true <- subset_samples(p.comb.paraffin, TRUE_control == "TRUE") #only true samples
+df.condition3.meta[1,1] <- nsamples(p.comb.paraffin.true)
+p.comb.paraffin.ntc <- subset_samples(p.comb.paraffin, TRUE_control == "control") #only ntc from sample_side
+df.condition3.meta[3,1] <- nsamples(p.comb.paraffin.ntc)
+bin.data.paraffin <- data.frame(x = prevalence(p.comb.paraffin.true, detection = 0, count = TRUE),
+       n = nsamples(p.comb.paraffin.true),
+       p = prevalence(p.comb.paraffin.ntc, detection = 0, count = FALSE))
+
+vec <- seq(1,nrow(bin.data.paraffin)) #vector to cycle thru for binom.test
+for (i in vec) {
+  vec[i] <- binom.test(x = bin.data.paraffin[i,"x"],n = bin.data.paraffin[i,"n"],p = bin.data.paraffin[i,"p"],alternative = "greater")$p.value
+} #perform binom.test. fetch needed data from row in bin.data.paraffin. store p.value from binom.test in vector: index in vector corresponds to row from bin.data.paraffin 
+
+df.p3 <- data.frame(id = rownames(bin.data.paraffin),
+                     pvalue = vec)
+bad_taxa <- list.append(bad_taxa,df.p3[which(x = df.p3$pvalue >= 0.05),1])
+
+a <- union(bad_taxa[[1]],bad_taxa[[2]])
+b <- union(bad_taxa[[3]],bad_taxa[[4]])
+c <- union(bad_taxa[[5]],bad_taxa[[6]])
+d <- union(bad_taxa[[7]],bad_taxa[[8]])
+e <- union(a,bad_taxa[[9]])
+
+a <- union(e,b)
+c <- union(c,d)
+bad_taxa <- union(a,c)
+
+#issues of check: most batches dont contain true samples, some contain no negative control at all, some contain no desired negative control -> general issue.
+
+df.condition.meta <- cbind(df.condition1.meta,df.condition2.meta,df.condition3.meta)
+
+p.newfilter <- subset_taxa(p.comb.filt.s.new, !(taxa_names(p.comb.filt.s.new) %in% bad_taxa))
+p.newfilter <- subset_samples(p.newfilter,TRUE_control == "TRUE")
+
+
+#debugging {13.12.2022}
+IDs <- unique(meta(p.comb.filt.s.new)$DNAex_round)
+length(IDs)
+b <- subset_samples(p.comb.filt.s.new, DNAex_round == IDs[1])
+b <- prune_taxa(taxa = (taxa_names(b)[-which(taxa_sums(b) == 0)]),x = b)
+  check1 <- length(which(meta(b)$TRUE_control == "TRUE"))
+  if (check1 == 0) {
+    print(paste0("check1 :",IDs[i]))
+    next}
+  check2 <- length(which(meta(b)$TRUE_control == "control"))
+  if (check2 == 0) {
+    print(paste0("check2 :",IDs[i]))
+    next}
+  check3 <- length(which(meta(b)$sample_side == "buffer"))
+  if (check3 == 0) {
+    print(paste0("check3 :",IDs[i]))
+    next}
+  b.true <- subset_samples(b,TRUE_control == "TRUE")
+  b.condition <- subset_samples(b,sample_side == "buffer")
+  b <- merge_phyloseq(b.true,b.condition)
+  b <- prune_taxa(taxa = (taxa_names(b)[-which(taxa_sums(b) == 0)]),x = b)
+  b.true <- subset_samples(b,TRUE_control == "TRUE")
+  b.condition <- subset_samples(b,sample_side == "buffer") #this is a bit redundant. 
+  df.filt <- data.frame(x = prevalence(b.true, detection = 0, count = TRUE),
+                        n = nsamples(b.true),
+                        p = prevalence(b.condition, detection = 0, count = FALSE))
+vec <- seq(1,nrow(df.filt)) #vector to cycle thru for binom.test
+for (i in vec) {
+  vec[i] <- binom.test(x = df.filt[i,"x"],n = df.filt[i,"n"],p = df.filt[i,"p"],alternative = "greater")$p.value
+}
+df.p1 <- data.frame(id = rownames(df.filt),
+                     pvalue = vec)
+
+for (i in 1) {
+  x <- paste0("df.p1",i)
+  assign(x,df.p1)
+}
+
+# we remove taxa that have x = n = 0. These taxa are not present in the subset and therefore it is not sensible to perform any kind of statistical test on them.
+
+#modification {15.12.2022}
+#oral explanation: "all elemtens of a batch suffer from batch-specific contamination. Utilise all information for decontaminating" {why are we splitting our negative controls?} 
+bad_taxa <- list()
+if( !require(rlist) ){
+  install.packages(rlist)
+}
+library(rlist)
+IDs <- unique(meta(p.comb.filt.s.new)$DNAex_round)
+df.condition1.meta <- as.data.frame(matrix(0,nrow = 8,ncol = length(IDs)),row.names = c("n_true_samples","n_nct_samples","n_paraffin_tumor_nct_samples","n_paraffin_normal_nct_samples","n_paraffin_nct_samples","n_buffer_nct_samples","n_pcr_nct_samples","batch_name"))
+vec0 <- rep(0,length(IDs))
+for (i in seq(1,length(IDs))) {
+  vec0[i] <- paste0("DNAex","b",i)
+}
+colnames(df.condition1.meta) <- vec0
+for (i in seq(1,length(IDs))) {
+  b <- subset_samples(p.comb.filt.s.new, DNAex_round == IDs[i])
+  b <- prune_taxa(taxa = (taxa_names(b)[-which(taxa_sums(b) == 0)]),x = b) #this removes taxa with taxa_sums == 0 from the overall batch
+  check1 <- length(which(meta(b)$TRUE_control == "TRUE")) #checks whether the batch contains true_samples
+  check2 <- length(which(meta(b)$TRUE_control == "control")) #checks whether the batch contains nct_sample
+  check3 <- length(which(meta(b)$sample_side == "buffer")) #checks whether the batch contains buffer_nct_samples
+  check4 <- length(which(meta(b)$sample_side == "PCR_ctrl_H2O")) #checks whether the batch contains pcrH2O_nct_samples
+  check5 <- length(which(meta(b)$sample_side == "paraffin_normal")) #checks whether the batch contains paraffinnormal_nct_samples
+  check6 <- length(which(meta(b)$sample_side == "paraffin_tumor")) #checks whether the batch contains paraffintumor_nct_samples
+  df.condition1.meta[1,i] <- check1
+  df.condition1.meta[2,i] <- check2
+  df.condition1.meta[3,i] <- check6
+  df.condition1.meta[4,i] <- check5
+  df.condition1.meta[5,i] <- (check5+check6)
+  df.condition1.meta[6,i] <- check3
+  df.condition1.meta[7,i] <- check4
+  df.condition1.meta[8,i] <- IDs[i]
+  if (check1 == 0) {
+    print(paste0("check1 :",IDs[i]))
+    next}
+  if (check2 == 0) {
+    print(paste0("check2 :",IDs[i]))
+    next}
+  if (check3 != 0) {
+    #perform test
+    b.true <- subset_samples(b,TRUE_control == "TRUE") #subset of true samples in batch
+    b.condition <- subset_samples(b,sample_side == "buffer") #subset of batch_nct_samples in batch
+    b.sub <- merge_phyloseq(b.true,b.condition) # we take the subsets we want, merge them to allow for thorough removal of bacteria
+    if (length(which(taxa_sums(b.sub) == 0)) != 0) {
+    b.sub <- prune_taxa(taxa = (taxa_names(b.sub)[-which(taxa_sums(b.sub) == 0)]),x = b.sub) #this removes taxa with taxa_sums == 0 from our batch subset
+    }
+    b.true <- subset_samples(b.sub,TRUE_control == "TRUE") #create new subset of true samples in batch
+    b.condition <- subset_samples(b.sub,sample_side == "buffer") #create new subset of batch_nct_samples in batch  
+    # Im honest: this is a bit redundant
+    df.filt <- data.frame(x = prevalence(b.true, detection = 0, count = TRUE),
+                        n = nsamples(b.true),
+                        p = prevalence(b.condition, detection = 0, count = FALSE)) #df stores x,n,p for binom.test
+    vec <- seq(1,nrow(df.filt))
+    for (j in vec) {
+    vec[j] <- binom.test(x = df.filt[j,"x"], n = df.filt[j,"n"], p = df.filt[j,"p"],alternative = "greater")$p.value
+    }
+    y <- paste0("df.filt1-buffer-",IDs[i])
+    assign(y,df.filt)
+    df.p1 <- data.frame(id = rownames(df.filt),
+                       pvalue = vec)
+    x <- paste0("df.p1-buffer-",IDs[i])
+    assign(x,df.p1)
+  }
+  if (check4 != 0) {
+    #perform test
+    b.true <- subset_samples(b,TRUE_control == "TRUE") #subset of true samples in batch
+    b.condition <- subset_samples(b,sample_side == "PCR_ctrl_H2O") #subset of batch_nct_samples in batch
+    b.sub <- merge_phyloseq(b.true,b.condition) # we take the subsets we want, merge them to allow for thorough removal of bacteria
+    if (length(which(taxa_sums(b.sub) == 0)) != 0) {
+    b.sub <- prune_taxa(taxa = (taxa_names(b.sub)[-which(taxa_sums(b.sub) == 0)]),x = b.sub) #this removes taxa with taxa_sums == 0 from our batch subset
+    }
+    b.true <- subset_samples(b.sub,TRUE_control == "TRUE") #create new subset of true samples in batch
+    b.condition <- subset_samples(b.sub,sample_side == "PCR_ctrl_H2O") #create new subset of batch_nct_samples in batch  
+    # Im honest: this is a bit redundant
+    df.filt <- data.frame(x = prevalence(b.true, detection = 0, count = TRUE),
+                        n = nsamples(b.true),
+                        p = prevalence(b.condition, detection = 0, count = FALSE)) #df stores x,n,p for binom.test
+    vec <- seq(1,nrow(df.filt))
+    for (j in vec) {
+    vec[j] <- binom.test(x = df.filt[j,"x"], n = df.filt[j,"n"], p = df.filt[j,"p"],alternative = "greater")$p.value
+    }
+    y <- paste0("df.filt1-PCR_ctrl_H2O-",IDs[i])
+    assign(y,df.filt)
+    df.p1 <- data.frame(id = rownames(df.filt),
+                       pvalue = vec)
+    x <- paste0("df.p1-PCR_ctrl_H2O-",IDs[i])
+    assign(x,df.p1)
+    }
+}
 ```
 
+```{r visulize sample size according to batch}
+sample_data(p.comb.filt.s.new)$sample_sum <- sample_sums(p.comb.filt.s.new)
+sample_data(p.comb.filt.s.new)$index <- seq(1,nsamples(p.comb.filt.s.new))
+df.melt <- psmelt(subset_samples(p.comb.filt.s.new, TRUE_control == "TRUE"))
+ggplot(data=df.melt, aes(x=index, y=sample_sum, color=DNAex_round)) + geom_point()  + theme_bw() + ggtitle("Library size")
 
-
-
-
-
-
-
-
-
-
-
+ggplot(data=df.melt, aes(x=index, y=sample_sum, color=PCR_round)) + geom_point()  + theme_bw() + ggtitle("Library size")
+```
 
 Analysis without normalization:
 First we need to subset our samples such that "TRUE_control" = TRUE only!
@@ -2162,8 +2747,240 @@ First we need to subset our samples such that "TRUE_control" = TRUE only!
 #div↑ ~ richness↑ , evenness↑
 #Richness, Phylogenetic Diversity, Evenness, Dominance, Rarity
 #Faith?
-a_index <- estimate_richness(physeq = otu_table(p.true.prev.postf1f2), measures = c("Observed","Shannon","Simpson","InvSimpson", "Chao1","ACE"))
+a_index1 <- estimate_richness(physeq = otu_table(p.true.prev.postf1f2), measures = c("Observed","Shannon","Simpson","InvSimpson", "Chao1","ACE","Fisher"))
+a_index1$sample_side <- meta(p.true.prev.postf1f2)$sample_side
+a_index1$sample_side <- factor(a_index1$sample_side)
+comb <- split(t(combn(levels(a_index1$sample_side), 2)),seq(nrow(t(combn(levels(a_index1$sample_side), 2)))))
+if( !require(ggsignif) ){
+  install.packages(ggsignif)
+}
+library(ggsignif)
+ggplot(a_index1, aes(x = sample_side, y = Fisher)) +
+  # Outliers are removed, because otherwise each data point would be plotted twice; 
+  # as an outlier of boxplot and as a point of dotplot.
+  geom_boxplot(outlier.shape = NA) + 
+  geom_jitter(width = 0.2) + 
+  labs(x = "sample type", title = expression(Diversity[Fisher])) +
+  geom_signif(comparisons = comb, map_signif_level = FALSE) +
+  theme(text = element_text(size = 10))
 
+
+data <- reshape2::melt(a_index1)
+ggplot(data, aes(x = sample_side,y = value)) +
+  # Outliers are removed, because otherwise each data point would be plotted twice; 
+  # as an outlier of boxplot and as a point of dotplot.
+  geom_boxplot(outlier.shape = NA) + 
+  geom_jitter(width = 0.2) + 
+  labs(x = "sample type", title = "alpha diversity for p.true.prev.postf1f2") +
+  geom_signif(comparisons = comb, map_signif_level = FALSE) +
+  theme(text = element_text(size = 10)) +
+  facet_wrap(~ variable, scales = "free_y")
+
+
+a_index2 <- estimate_richness(physeq = otu_table(p.true.postf1f2.perfect), measures = c("Observed","Shannon","Simpson","InvSimpson", "Chao1","ACE","Fisher"))
+a_index2$sample_side <- meta(p.true.postf1f2.perfect)$sample_side
+a_index2$sample_side <- factor(a_index2$sample_side)
+comb <- split(t(combn(levels(a_index2$sample_side), 2)),seq(nrow(t(combn(levels(a_index2$sample_side), 2)))))
+ggplot(a_index2, aes(x = sample_side, y = Shannon)) +
+  # Outliers are removed, because otherwise each data point would be plotted twice; 
+  # as an outlier of boxplot and as a point of dotplot.
+  geom_boxplot(outlier.shape = NA) + 
+  geom_jitter(width = 0.2) + 
+  labs(x = "sample type", title = "Shannon index: p.true.postf1f2.perfect") +
+  geom_signif(comparisons = comb, map_signif_level = FALSE) +
+  theme(text = element_text(size = 10))
+
+
+
+phy_tree = rtree(ntaxa(p.true.prev.postf1f2), rooted=TRUE, tip.label=taxa_names(p.true.prev.postf1f2))
+p.true.prev.postf1f2  <- merge_phyloseq(p.true.prev.postf1f2 , phy_tree)
+
+p.true.prev.postf1f2.mod <- subset_samples(p.true.prev.postf1f2,uniqueID != c("326","327","328","329","330","331","332","333"))
+p.true.prev.postf1f2.mod <- subset_samples(p.true.prev.postf1f2.mod, uniqueID != c("334","335"))
+
+uf_dist = phyloseq::distance(p.true.prev.postf1f2.mod, method="unifrac", weighted=F)
+uf_ordination = ordinate(p.true.prev.postf1f2.mod, method="PCoA", distance=uf_dist)
+
+tumor_count <- meta(p.true.prev.postf1f2.mod) %>%
+  filter(sample_side == "tumor") %>%
+  count(sample_side) %>%
+  pull(n)
+normal_count <- as_tibble(sample_data(p.true.prev.postf1f2.mod)) %>% filter(sample_side == "normal") %>% count(sample_side) %>% pull(n)
+
+pcoa1 <- paste("PCoA 1", " [", round(uf_ordination[[3]]$Relative_eig[1], digits = 3)*100, "%]", sep = "")
+pcoa2 <- paste("PCoA 2", " [", round(uf_ordination[[3]]$Relative_eig[2], digits = 3)*100, "%]", sep = "")
+
+set.seed(40)
+p.adonis <- adonis2(uf_dist ~ sample_data(p.true.prev.postf1f2.mod)$sample_side)
+
+p <- case_when(
+  p.adonis$`Pr(>F)`[1] > 0.05 ~ "n.s.",
+  p.adonis$`Pr(>F)`[1] < 0.05 &  p.adonis$`Pr(>F)`[1] > 0.01 ~ paste(p.adonis$`Pr(>F)`[1], "*", sep = " "),
+  p.adonis$`Pr(>F)`[1] <= 0.01 & p.adonis$`Pr(>F)`[1] > 0.001  ~ paste(p.adonis$`Pr(>F)`[1], "**", sep = " "),
+  p.adonis$`Pr(>F)`[1] <= 0.001 ~ paste(p.adonis$`Pr(>F)`[1], "***", sep = " "),
+)
+annotations <- data.frame(
+        xpos = c(-Inf),
+        ypos =  c(Inf),
+        annotateText = p,
+        hjustvar = c(-0.2) ,
+        vjustvar = c(1.5))
+
+plot_ordination(p.true.prev.postf1f2.mod, uf_ordination, color="sample_side") +
+  geom_point(aes(colour=sample_side), size=3) +
+  theme(aspect.ratio=1) +
+  theme_bw()+
+ scale_color_brewer(palette = "Set1", labels=c(paste("Tumor samples\nn =", tumor_count, sep = " "), paste("Normal samples\nn =", normal_count, sep = " ")))+
+  stat_ellipse() +
+  # xlab(pcoa1)+
+  # ylab(pcoa2)+
+  theme(panel.grid =  element_blank())+
+  ggtitle("Differences Normal and Tumor - Unweighted UF - Not rarified") +
+  theme (axis.text=element_text(size=14),
+         axis.title=element_text(size=16,face="bold"))+
+  theme(
+        # legend.justification=c(1.15,-0.15), legend.position=c(1,0),
+        legend.text = element_text(size = 12),
+        legend.title = element_blank())+
+  geom_text(data=annotations,aes(x=xpos,y=ypos,hjust=hjustvar,vjust=vjustvar,label=annotateText), inherit.aes = FALSE)
+
+
+bray_dist = phyloseq::distance(p.true.prev.postf1f2, method="bray")
+bc_ordination = ordinate(p.true.prev.postf1f2, method="PCoA", distance=bray_dist)
+
+tumor_count <- as_tibble(sample_data(p.true.prev.postf1f2)) %>% filter(sample_side == "tumor") %>% count(sample_side) %>% pull(n)
+normal_count <- as_tibble(sample_data(p.true.prev.postf1f2)) %>% filter(sample_side == "normal") %>% count(sample_side) %>% pull(n)
+
+pcoa1 <- paste("PCoA 1", " [", round(bc_ordination[[3]]$Relative_eig[1], digits = 3)*100, "%]", sep = "")
+pcoa2 <- paste("PCoA 2", " [", round(bc_ordination[[3]]$Relative_eig[2], digits = 3)*100, "%]", sep = "")
+
+set.seed(40)
+p.adonis <- adonis2(bray_dist ~ sample_data(p.true.prev.postf1f2)$sample_side)
+
+p <- case_when(
+  p.adonis$`Pr(>F)`[1] > 0.05 ~ "n.s.",
+  p.adonis$`Pr(>F)`[1] < 0.05 &  p.adonis$`Pr(>F)`[1] > 0.01 ~ paste(p.adonis$`Pr(>F)`[1], "*", sep = " "),
+  p.adonis$`Pr(>F)`[1] <= 0.01 & p.adonis$`Pr(>F)`[1] > 0.001  ~ paste(p.adonis$`Pr(>F)`[1], "**", sep = " "),
+  p.adonis$`Pr(>F)`[1] <= 0.001 ~ paste(p.adonis$`Pr(>F)`[1], "***", sep = " "),
+)
+annotations <- data.frame(
+        xpos = c(-Inf),
+        ypos =  c(Inf),
+        annotateText = p,
+        hjustvar = c(-0.2) ,
+        vjustvar = c(1.5))
+
+plot_ordination(p.true.prev.postf1f2, bc_ordination, color="sample_side") +
+  geom_point(aes(colour=sample_side), size=3) +
+  theme(aspect.ratio=1) +
+  theme_bw()+
+ scale_color_brewer(palette = "Set1", labels=c(paste("Tumor samples\nn =", tumor_count, sep = " "), paste("Normal samples\nn =", normal_count, sep = " ")))+
+  stat_ellipse() +
+  xlab(pcoa1)+
+  ylab(pcoa2)+
+  theme(panel.grid =  element_blank())+
+  ggtitle("Differences Normal and Tumor - Bray curtis - Not rarified") +
+  theme (axis.text=element_text(size=14),
+         axis.title=element_text(size=16,face="bold"))+
+  theme(
+        # legend.justification=c(1.15,-0.15), legend.position=c(1,0),
+        legend.text = element_text(size = 12),
+        legend.title = element_blank())+
+  geom_text(data=annotations,aes(x=xpos,y=ypos,hjust=hjustvar,vjust=vjustvar,label=annotateText), inherit.aes = FALSE)
+
+# rarified samples
+
+sample.size <- 1000
+seed <- 711
+p.true.prev.postf1f22 <- rarefy_even_depth(physeq = p.true.prev.postf1f2, sample.size = sample.size, rngseed = seed)
+
+true_count <- as_tibble(sample_data(p.true.prev.postf1f22)) %>% filter(TRUE_control == "TRUE") %>% count(TRUE_control) %>% pull(n)
+control_count <- as_tibble(sample_data(p.true.prev.postf1f22)) %>% filter(TRUE_control == "control") %>% count(TRUE_control) %>% pull(n)
+
+bray_dist = phyloseq::distance(p.true.prev.postf1f22, method="bray")
+bc_ordination = ordinate(p.true.prev.postf1f22, method="PCoA", distance=bray_dist)
+
+pcoa1 <- paste("PCoA 1", " [", round(bc_ordination[[3]]$Relative_eig[1], digits = 3)*100, "%]", sep = "")
+pcoa2 <- paste("PCoA 2", " [", round(bc_ordination[[3]]$Relative_eig[2], digits = 3)*100, "%]", sep = "")
+
+set.seed(40)
+p.adonis <- adonis2(bray_dist ~ sample_data(p.true.prev.postf1f22)$TRUE_control)
+
+p <- case_when(
+  p.adonis$`Pr(>F)`[1] > 0.05 ~ "n.s.",
+  p.adonis$`Pr(>F)`[1] < 0.05 &  p.adonis$`Pr(>F)`[1] > 0.01 ~ paste(p.adonis$`Pr(>F)`[1], "*", sep = " "),
+  p.adonis$`Pr(>F)`[1] <= 0.01 & p.adonis$`Pr(>F)`[1] > 0.001  ~ paste(p.adonis$`Pr(>F)`[1], "**", sep = " "),
+  p.adonis$`Pr(>F)`[1] <= 0.001 ~ paste(p.adonis$`Pr(>F)`[1], "***", sep = " "),
+)
+annotations <- data.frame(
+        xpos = c(-Inf),
+        ypos =  c(Inf),
+        annotateText = p,
+        hjustvar = c(-0.2) ,
+        vjustvar = c(1.5))
+
+plot_ordination(p.true.prev.postf1f22, bc_ordination, color="TRUE_control") + 
+  geom_point(aes(colour=TRUE_control), size=3) +
+  theme(aspect.ratio=1) +
+  theme_bw()+
+scale_color_brewer(palette = "Set1", labels=c(paste("Tissue samples\nn =", true_count, sep = " "), paste("Negative controls\nn =", control_count, sep = " ")))+
+  stat_ellipse() +
+  xlab(pcoa1)+
+  ylab(pcoa2)+
+  theme(panel.grid =  element_blank())+
+  ggtitle("Differences Negative controls and True samples - Bray curtis - Rarified") +
+  theme (axis.text=element_text(size=14),
+         axis.title=element_text(size=16,face="bold"))+
+  theme(
+        # legend.justification=c(1.15,-0.15), legend.position=c(1,0),
+        legend.text = element_text(size = 12),
+        legend.title = element_blank())+
+  geom_text(data=annotations,aes(x=xpos,y=ypos,hjust=hjustvar,vjust=vjustvar,label=annotateText), inherit.aes = FALSE)
+
+
+
+uf_dist = phyloseq::distance(p.true.prev.postf1f22, method="unifrac", weighted=F)
+uf_ordination = ordinate(p.true.prev.postf1f22, method="PCoA", distance=uf_dist)
+
+true_count <- as_tibble(sample_data(p.true.prev.postf1f2)) %>% filter(TRUE_control == "TRUE") %>% count(TRUE_control) %>% pull(n)
+control_count <- as_tibble(sample_data(p.true.prev.postf1f2)) %>% filter(TRUE_control == "control") %>% count(TRUE_control) %>% pull(n)
+
+pcoa1 <- paste("PCoA 1", " [", round(uf_ordination[[3]]$Relative_eig[1], digits = 3)*100, "%]", sep = "")
+pcoa2 <- paste("PCoA 2", " [", round(uf_ordination[[3]]$Relative_eig[2], digits = 3)*100, "%]", sep = "")
+
+set.seed(40)
+p.adonis <- adonis2(uf_dist ~ sample_data(p.true.prev.postf1f22)$TRUE_control)
+
+p <- case_when(
+  p.adonis$`Pr(>F)`[1] > 0.05 ~ "n.s.",
+  p.adonis$`Pr(>F)`[1] < 0.05 &  p.adonis$`Pr(>F)`[1] > 0.01 ~ paste(p.adonis$`Pr(>F)`[1], "*", sep = " "),
+  p.adonis$`Pr(>F)`[1] <= 0.01 & p.adonis$`Pr(>F)`[1] > 0.001  ~ paste(p.adonis$`Pr(>F)`[1], "**", sep = " "),
+  p.adonis$`Pr(>F)`[1] <= 0.001 ~ paste(p.adonis$`Pr(>F)`[1], "***", sep = " "),
+)
+annotations <- data.frame(
+        xpos = c(-Inf),
+        ypos =  c(Inf),
+        annotateText = p,
+        hjustvar = c(-0.2) ,
+        vjustvar = c(1.5))
+
+plot_ordination(p.true.prev.postf1f22, uf_ordination, color="TRUE_control") + 
+  geom_point(aes(colour=TRUE_control), size=3) +
+  theme(aspect.ratio=1) +
+  theme_bw()+
+ scale_color_brewer(palette = "Set1", labels=c(paste("Tissue samples\nn =", true_count, sep = " "), paste("Negative controls\nn =", control_count, sep = " ")))+
+  stat_ellipse() +
+  xlab(pcoa1)+
+  ylab(pcoa2)+
+  theme(panel.grid =  element_blank())+
+  ggtitle("Differences Negative controls and True samples - Unweighted UF - Rarified") +
+  theme (axis.text=element_text(size=14),
+         axis.title=element_text(size=16,face="bold"))+
+  theme(
+        # legend.justification=c(1.15,-0.15), legend.position=c(1,0),
+        legend.text = element_text(size = 12),
+        legend.title = element_blank())+
+  geom_text(data=annotations,aes(x=xpos,y=ypos,hjust=hjustvar,vjust=vjustvar,label=annotateText), inherit.aes = FALSE)
 ```
 
 
