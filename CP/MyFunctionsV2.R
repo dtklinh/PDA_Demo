@@ -261,3 +261,29 @@ Inspect_SequencingDepth <- function(PhyloObj){
     kable_classic(full_width = F, html_font = "Cambria") %>%
     scroll_box(width = "100%", height = "600px")
 }
+
+ConQuR_applyCP <- function(phyloseq,meta_data,batch_type,batch_ref){
+  otu <- as(otu_table(phyloseq), "matrix")
+  if(taxa_are_rows(phyloseq)){otu <- t(otu)}
+  if(grepl("dna", tolower(batch_type), fixed = TRUE)){
+    sub.meta.data <- meta_data[meta_data$TRUE_control == "TRUE",]
+    sub.meta.data <- sub.meta.data %>% mutate(sample_sidev2 = as.factor(sample_side),
+                                              DNAex_roundv2 = as.factor(DNAex_round))
+    batchid = sub.meta.data[,c("DNAex_roundv2")]
+    covar = sub.meta.data[,c("sample_sidev2")]
+  }
+  if(grepl("pcr", tolower(batch_type), fixed = TRUE)){
+    sub.meta.data <- meta_data[meta_data$TRUE_control == "TRUE",]
+    sub.meta.data <- sub.meta.data %>% mutate(sample_sidev2 = as.factor(sample_side),
+                                              PCR_roundv2 = as.factor(PCR_round))
+    batchid = sub.meta.data[,c("PCR_roundv2")]
+    covar = sub.meta.data[,c("sample_sidev2")]
+  }
+  options(warn = -2)
+  taxa_corrected <- ConQuR(tax_tab = otu,batchid = batchid,covariates = covar,batch_ref = batch_ref)
+  tmp_phy <- phyloseq
+  otu_table(tmp_phy) <- otu_table(taxa_corrected %>% t(),taxa_are_rows = TRUE)
+  Plot_PCoA(TAX = otu,factor = batchid,main="Pre-Correction, Bray Curtis")
+  Plot_PCoA(TAX = taxa_corrected,factor = batchid ,main = "Post-Correction, Bray Curtis")
+  return(tmp_phy)
+}

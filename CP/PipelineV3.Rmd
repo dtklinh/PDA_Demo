@@ -64,13 +64,9 @@ library(RColorBrewer)
 
 
 ```{r}
-
 ## adding functions
-
 source("./CP/MyFunctionsV2.R")
-
 source("./CP/MyAnalysisWithPlots.R")
-
 ```
 
 
@@ -88,7 +84,6 @@ physeq4.1500.80 <- readRDS("raw_data/PhyloSeqObj/2022_05_28_patho_FFPE_tum_panc_
 physeq5.1500.80 <- readRDS("raw_data/PhyloSeqObj/2021_12_01_patho_FFPE_self_tumor/physeq_original_1500.80.rds")
 #merge the different phyloseq objects into 1 phyloseq object
 p.true.original <- merge_phyloseq(physeq1.1500.80,physeq2.1500.80,physeq3.1500.80,physeq4.1500.80,physeq5.1500.80)
-
 #clean objects
 rm(list = c("physeq1.1500.80", "physeq2.1500.80", "physeq3.1500.80", "physeq4.1500.80", "physeq5.1500.80"))
 ```
@@ -116,7 +111,6 @@ physeq.nct.original <- merge_phyloseq(physeq.nct1.1500.80, physeq.nct2.1500.80, 
 #clean objects
 rm(list = c('physeq.nct1.1500.80', 'physeq.nct2.1500.80', 'physeq.nct3.1500.80', 'physeq.nct4.1500.80', 'physeq.nct5.1500.80',
             'physeq.nct6.1500.80', 'physeq.nct7.1500.80', 'physeq.nct8.1500.80', 'physeq.nct9.1500.80', 'physeq.nct10.1500.80', 'physeq.nct11.1500.80'))
-
 ```
 
 Now in NCT samples, we have:
@@ -349,21 +343,30 @@ We apply ConQuR to correct batch effect across batches.
 First, we apply the batch correction on DNAex_round
 
 ```{r}
-#p.true.RmLowAbun.RmHLPrev.batchDNA <- ConQur_apply(p.true.RmLowAbun.RmHLPrev, metadata, "DNAex_round","DNAex_round", 1)
+p.true.RmLowAbun.RmHLPrev.batchDNA <- ConQuR_applyCP(phyloseq = p.true.RmLowAbun.RmHLPrev,meta_data = metadata,batch_type = "DNAex",batch_ref = 1)
 ```
+
+```{r}
+p.true.RmLowAbun.RmHLPrev.batchPCR <- ConQuR_applyCP(phyloseq = p.true.RmLowAbun.RmHLPrev.batchDNA,meta_data = metadata,batch_type = "PCR",batch_ref = 1)
+```
+
+```{r}
+p.true.RmLowAbun.RmHLPrev.batch <- p.true.RmLowAbun.RmHLPrev.batchPCR
+```
+
 
 ### Normalization by Rarefaction
 
 First of all, we have a look at bacterial reads of each sample
 
 ```{r}
-Inspect_SequencingDepth(p.true.RmLowAbun.RmHLPrev)
+Inspect_SequencingDepth(p.true.RmLowAbun.RmHLPrev.batch)
 ```
 
 Rarefying curve
 
 ```{r}
-tab <- p.true.RmLowAbun.RmHLPrev %>% otu_table() 
+tab <- p.true.RmLowAbun.RmHLPrev.batch %>% otu_table() 
 class(tab) <- "matrix"
 rarecurve(tab %>% t(), step=50, cex=0.5)
 ```
@@ -374,5 +377,5 @@ Normalizing via rarefying
 ## rarifying
 sample.size <- 1000
 seed <- 1001
-p.true.M1.rar <- rarefy_even_depth(physeq = p.true.RmLowAbun.RmHLPrev, sample.size = sample.size, rngseed = seed)
+p.true.M1.rar <- rarefy_even_depth(physeq = p.true.RmLowAbun.RmHLPrev.batch, sample.size = sample.size, rngseed = seed)
 ```
