@@ -51,7 +51,7 @@ is.valid.nct.type <- function(batch_num, batch_type, meta_data){
   return(n.nct.type)
 }
 
-create.sub.NCT.Sample.type <- function(batch_num,batch_type,meta_data,typeVector,NCT.sample){
+create.sub.NCT.Sample.type <- function(batch_num,batch_type,meta_data,typeVector,NCT.sample,i){
   sub_meta_data <- NULL
   if(grepl("dna", tolower(batch_type), fixed = TRUE)){
     sub_meta_data <- meta_data[meta_data$DNAex_round == batch_num,]
@@ -98,7 +98,7 @@ Binom.Test.complex <- function(True.Sample, NCT.sample, batch_num, batch_type, m
       cont[names(A)[i]] <- NA
     }
     if (A[i] == TRUE) {
-      sub.NCT.Sample.type <- create.sub.NCT.Sample.type(batch_num,batch_type,meta_data,typeVector = A,NCT.sample)
+      sub.NCT.Sample.type <- create.sub.NCT.Sample.type(batch_num,batch_type,meta_data,typeVector = A,NCT.sample,i)
       df <- testTaxa(NCT.sample = sub.NCT.Sample.type,True.Sample)
       cont[names(A)[i]] <- list(as.character(unlist(df[df$pval > 0.05, "OTU"]$OTU)))
     }
@@ -152,7 +152,7 @@ Wrapper_Nejman <- function(True.Sample, NCT.Sample, metadata, x){
 filter_by_low_abundance <- function(phyloseqObj, threshold, A){
   physeq.abun.filt <- phyloseq::transform_sample_counts(phyloseqObj, function(x){x/sum(x)})
   noCont <- phyloseq::genefilter_sample(physeq.abun.filt, filterfun_sample(function(x) x > threshold), A= A)
-  phyloseqObj <- prune_taxa(taxa = noCont,x = phyloseqObj)
+  phyloseqObj <- phyloseq::prune_taxa(taxa = noCont,x = phyloseqObj)
   return(phyloseqObj)
 }
 
@@ -177,12 +177,12 @@ visualize_samples_low_reads <- function(PhyObj){
 filter_samples_low_reads <- function(PhyObj, threshold){
   bac.count.ntc <- tibble(bac.count = sample_sums(PhyObj), 
                           sample = sample_data(PhyObj)$id)
-  
   id.ex <- bac.count.ntc %>% filter(bac.count < threshold) %>% pull (sample)
   physeq.read.filt <- subset_samples(PhyObj, !(id %in% id.ex))
   physeq.read.filt <- prune_taxa(taxa_sums(physeq.read.filt)>0, physeq.read.filt)
   return(physeq.read.filt)
 }
+
 
 ## wrapper of low abundance filtering by PERfect package
 Wrapper_FERfect <- function(PhyObj){

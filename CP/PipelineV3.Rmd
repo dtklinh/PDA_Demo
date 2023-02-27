@@ -188,7 +188,16 @@ visualize_samples_low_reads(physeq.nct.filt.s)
 We decide to remove NCT samples if their read counts are less than 150
 
 ```{r}
-physeq.nct.filt.s <- filter_samples_low_reads(PhyObj = physeq.nct.filt.s,threshold = 150)
+#physeq.nct.filt.s <- filter_samples_low_reads(PhyObj = physeq.nct.filt.s,threshold = 150)
+bac.count.ntc <- tibble(bac.count = sample_sums(physeq.nct.filt.s), 
+                          sample = sample_data(physeq.nct.filt.s)$id)
+id.ex <- bac.count.ntc %>% filter(bac.count < 150) %>% pull (sample)
+physeq.read.filt <- subset_samples(physeq.nct.filt.s, !(id %in% id.ex))
+physeq.read.filt <- prune_taxa(taxa_sums(physeq.read.filt)>0, physeq.read.filt)
+physeq.nct.filt.s <- physeq.read.filt
+rm(bac.count.ntc)
+rm(id.ex)
+rm(physeq.read.filt)
 ```
 
 Now, in NTC samples, we have *`r nrow(sample_data(physeq.nct.filt.s))`* samples and *`r nrow(otu_table(physeq.nct.filt.s))`* taxa.
@@ -343,11 +352,78 @@ We apply ConQuR to correct batch effect across batches.
 First, we apply the batch correction on DNAex_round
 
 ```{r}
-p.true.RmLowAbun.RmHLPrev.batchDNA <- ConQuR_applyCP(phyloseq = p.true.RmLowAbun.RmHLPrev,meta_data = metadata,batch_type = "DNAex",batch_ref = 1)
+#p.true.RmLowAbun.RmHLPrev.batchDNA <- ConQuR_applyCP(phyloseq = p.true.RmLowAbun.RmHLPrev,meta_data = metadata,batch_type = "DNAex",batch_ref = 1)
+batch_type = "DNAex"
+otu <- as(otu_table(p.true.RmLowAbun.RmHLPrev), "matrix")
+if(taxa_are_rows(p.true.RmLowAbun.RmHLPrev)){otu <- t(otu)}
+if(grepl("dna", tolower(batch_type), fixed = TRUE)){
+  sub.meta.data <- metadata[metadata$TRUE_control == "TRUE",]
+  sub.meta.data <- sub.meta.data %>% mutate(sample_sidev2 = as.factor(sample_side),
+                                              DNAex_roundv2 = as.factor(DNAex_round))
+  batchid = sub.meta.data[,c("DNAex_roundv2")]
+  covar = sub.meta.data[,c("sample_sidev2")]
+  batch_refer = "1"
+}
+if(grepl("pcr", tolower(batch_type), fixed = TRUE)){
+  sub.meta.data <- metadata[metadata$TRUE_control == "TRUE",]
+  sub.meta.data <- sub.meta.data %>% mutate(sample_sidev2 = as.factor(sample_side),
+                                              PCR_roundv2 = as.factor(PCR_round))
+  batchid = sub.meta.data[,c("PCR_roundv2")]
+  covar = sub.meta.data[,c("sample_sidev2")]
+  batch_refer = "1"
+}
+options(warn = -2)
+taxa_corrected <- ConQuR(tax_tab = otu,batchid = batchid,covariates = covar,batch_ref = batch_refer)
+tmp_phy <- p.true.RmLowAbun.RmHLPrev
+otu_table(tmp_phy) <- otu_table(taxa_corrected %>% t(),taxa_are_rows = TRUE)
+Plot_PCoA(TAX = otu,factor = batchid,main="Pre-Correction, Bray Curtis")
+Plot_PCoA(TAX = taxa_corrected,factor = batchid ,main = "Post-Correction, Bray Curtis")
+p.true.RmLowAbun.RmHLPrev.batchDNA <- tmp_phy
+rm(batch_type)
+rm(otu)
+rm(sub.meta.data)
+rm(batchid)
+rm(covar)
+rm(batch_refer)
+rm(tmp_phy)
 ```
 
 ```{r}
-p.true.RmLowAbun.RmHLPrev.batchPCR <- ConQuR_applyCP(phyloseq = p.true.RmLowAbun.RmHLPrev.batchDNA,meta_data = metadata,batch_type = "PCR",batch_ref = 1)
+#p.true.RmLowAbun.RmHLPrev.batchPCR <- ConQuR_applyCP(phyloseq = p.true.RmLowAbun.RmHLPrev.batchDNA,meta_data = metadata,batch_type = "PCR",batch_ref = 1)
+
+batch_type = "PCR"
+otu <- as(otu_table(p.true.RmLowAbun.RmHLPrev.batchDNA), "matrix")
+if(taxa_are_rows(p.true.RmLowAbun.RmHLPrev.batchDNA)){otu <- t(otu)}
+if(grepl("dna", tolower(batch_type), fixed = TRUE)){
+  sub.meta.data <- metadata[metadata$TRUE_control == "TRUE",]
+  sub.meta.data <- sub.meta.data %>% mutate(sample_sidev2 = as.factor(sample_side),
+                                              DNAex_roundv2 = as.factor(DNAex_round))
+  batchid = sub.meta.data[,c("DNAex_roundv2")]
+  covar = sub.meta.data[,c("sample_sidev2")]
+  batch_refer = "1"
+}
+if(grepl("pcr", tolower(batch_type), fixed = TRUE)){
+  sub.meta.data <- metadata[metadata$TRUE_control == "TRUE",]
+  sub.meta.data <- sub.meta.data %>% mutate(sample_sidev2 = as.factor(sample_side),
+                                              PCR_roundv2 = as.factor(PCR_round))
+  batchid = sub.meta.data[,c("PCR_roundv2")]
+  covar = sub.meta.data[,c("sample_sidev2")]
+  batch_refer = "1"
+}
+options(warn = -2)
+taxa_corrected <- ConQuR(tax_tab = otu,batchid = batchid,covariates = covar,batch_ref = batch_refer)
+tmp_phy <- p.true.RmLowAbun.RmHLPrev.batchDNA
+otu_table(tmp_phy) <- otu_table(taxa_corrected %>% t(),taxa_are_rows = TRUE)
+Plot_PCoA(TAX = otu,factor = batchid,main="Pre-Correction, Bray Curtis")
+Plot_PCoA(TAX = taxa_corrected,factor = batchid ,main = "Post-Correction, Bray Curtis")
+p.true.RmLowAbun.RmHLPrev.batchPCR <- tmp_phy
+rm(batch_type)
+rm(otu)
+rm(sub.meta.data)
+rm(batchid)
+rm(covar)
+rm(batch_refer)
+rm(tmp_phy)
 ```
 
 ```{r}
