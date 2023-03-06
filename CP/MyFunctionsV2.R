@@ -47,7 +47,7 @@ is.valid.nct.type <- function(batch_num, batch_type, meta_data){
   #for pcr_control
   n.pcr <- length(which(sub_meta_data$sample_type == "pcr_ctrl"))
   n.pcr <- !(n.pcr == 0)
-  n.nct.type["pcr"] <- n.pcr
+  n.nct.type["pcr_ctrl"] <- n.pcr
   return(n.nct.type)
 }
 
