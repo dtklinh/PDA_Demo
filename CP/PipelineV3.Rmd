@@ -129,13 +129,15 @@ The protocol is as follows:
 
 2.  Deleting all taxIDs without resolution to species level, and combine different taxa_ids which belong to the same species (tax_glom)
 
-3.  Filtering low abundance taxa in true samples, by *either* one of the methods:
+3.  Unify all OTUs referencing different bacterial strains that however belong to the same bacterial species. This makes further downstream analysis easier as the OTU-BacName (BacName: name of bacteria) reference is already handled.
+
+4.  Filtering low abundance taxa in true samples, by *either* one of the methods:
 
     1.  Abundance filtering by PERfect package. 
 
     2.  Nejman et al. any taxa whose abundance below 10\^-4 in atleast 1 sample is removed. x
 
-4.  [Filtering taxas based on their prevalence in NCTs. Utilizing *either* one of the following:]{style="color:red;"}
+5.  [Filtering taxas based on their prevalence in NCTs. Utilizing *either* one of the following:]{style="color:red;"}
 
     1.  [Decontam R package]{style="color:red;"}
 
@@ -145,9 +147,9 @@ The protocol is as follows:
 
         2.  [For the taxas whose prevalence in NCTs are low, for each of those taxas, we apply Binomial test (one-sided, per condition, and per batch). All taxas whose p-values are greater than 0.05 are removed.]{style="color:red;"}
 
-5.  Batch effect correction (inter-batches) by ConQuR
+6.  Batch effect correction (inter-batches) by ConQuR
 
-6.  Normalization by rarefaction (vegan + phyloseq packages)
+7.  Normalization by rarefaction (vegan + phyloseq packages)
 
 ### Keep only bacterial reads (Step 1+2)
 
@@ -163,19 +165,7 @@ physeq.nct.filt.s <- tax_glom(physeq.nct.filt, taxrank = "species", NArm = TRUE)
 rm(physeq.nct.filt)
 ```
 
-
 Now in true sample, we have *`r nrow(sample_data(p.true.filt.s))`* samples and *`r nrow(otu_table(p.true.filt.s))`* taxa. In the NCTs, we have *`r nrow(sample_data(physeq.nct.filt.s))`* samples and *`r nrow(otu_table(physeq.nct.filt.s))`* taxa.
-
-### Low abundance filtering (Step 3)
-
-In this step, we remove all taxas in true samples whose abundance are low (eg. \<10\^-4) in atleast 1 sample
-```{r}
-p.true.RmLowAbun <- filter_by_low_abundance(phyloseqObj = p.true.filt.s,threshold =0.0001 ,A = 1)
-```
-
-Now we have *`r nrow(sample_data(p.true.RmLowAbun))`* samples and *`r nrow(otu_table(p.true.RmLowAbun))`* taxa.
-
-### Filtering taxas by their prevalence in NCTs (Step 4)
 
 Before using NCTs for decontamination, we firstly need to remove samples from NCTs whose read counts are low.
 
@@ -202,17 +192,51 @@ rm(physeq.read.filt)
 
 Now, in NTC samples, we have *`r nrow(sample_data(physeq.nct.filt.s))`* samples and *`r nrow(otu_table(physeq.nct.filt.s))`* taxa.
 
+### OTU unification
+
+We have 2 phyloseq objects that may describe the same species using different OTU handles. We therefore unify the OTU handles for an easier downstream analysis.
+
+### Merge TRUE/NCT samples
+```{r merge true/nct samples}
+p.comb.filt <- merge_phyloseq(p.true.filt.s,physeq.nct.filt.s) # merge the phyloseq objects containing true samples (p.true.filt.s) and nct samples (physeq.nct.filt.s)
+p.comb.filt.s <- tax_glom(p.comb.filt,taxrank = "species", NArm = TRUE) # agglomerate taxa to species level. This combines different OTUs {hypothecially: 450 / 453} assigned to the same species into just 1 OTU 
+sample_data(p.comb.filt.s)$is.neg <- sample_data(p.comb.filt.s)$TRUE_control == "control"#first identify your negative controls -> decontam!
+rm(p.comb.filt)
+```
+
+
+### Demerge TRUE/NCT samples
+```{r}
+p.true.filt.s.unify <- subset_samples(p.comb.filt.s,TRUE_control=="TRUE") #only true samples
+p.true.filt.s.unify <- prune_taxa(x = p.true.filt.s.unify,taxa = taxa_names(p.true.filt.s.unify)[-(which(taxa_sums(p.true.filt.s.unify)==0))]) #only taxa found in true samples
+
+physeq.filt.nct.s.unify <- subset_samples(p.comb.filt.s,TRUE_control == "control") #only NCT samples
+physeq.filt.nct.s.unify <- prune_taxa(x = physeq.filt.nct.s.unify,taxa = taxa_names(physeq.filt.nct.s.unify)[-(which(taxa_sums(physeq.filt.nct.s.unify)==0))]) #only taxa found in NCT samples
+```
+--
+
+### Low abundance filtering (Step 4)
+
+In this step, we remove all taxas in true samples whose abundance are low (eg. \<10\^-4) in atleast 1 sample
+```{r}
+p.true.RmLowAbun <- filter_by_low_abundance(phyloseqObj = p.true.filt.s.unify,threshold =0.0001 ,A = 1)
+```
+
+Now we have *`r nrow(sample_data(p.true.RmLowAbun))`* samples and *`r nrow(otu_table(p.true.RmLowAbun))`* taxa.
+
+### Filtering taxas by their prevalence in NCTs (Step 4)
+
 First of all, let us check the taxa overlap between NCT samples and true sample after low-abundance filtering by rule of thumb.
 
 
 ```{r}
 PlotVenn2Sets(taxa_names(p.true.RmLowAbun) %>% unique(),
-              taxa_names(physeq.nct.filt.s) %>% unique(),
+              taxa_names(physeq.filt.nct.s.unify) %>% unique(),
               "True Samples" , "NCT Samples ")
 ```
 
 
-There are `r setdiff(taxa_names(physeq.nct.filt.s), taxa_names(p.true.RmLowAbun)) %>% length()` taxa belong to NCT samples but not in true samples (after rule of thumb). They are obvious contamination.
+There are `r setdiff(taxa_names(physeq.filt.nct.s.unify), taxa_names(p.true.RmLowAbun)) %>% length()` taxa belong to NCT samples but not in true samples (after rule of thumb). They are obvious contamination.
 
 Instead of Decontam R package, we follow procedure of Nejman et al..
 
@@ -223,7 +247,7 @@ We consider all taxas whose prevalence in NCTs are higher than a certain thresho
 In order to determine that threshold, we have a look at the plot below
 
 ```{r}
-xout <- HighPrevalence_Data(p.true.RmLowAbun, physeq.nct.filt.s)
+xout <- HighPrevalence_Data(p.true.RmLowAbun, physeq.filt.nct.s.unify)
 plot(xout$factorx, xout$rel_tax, xlab="prevalence in NCT samples", ylab="proportion of tax in true samples")
 ```
 
@@ -234,8 +258,8 @@ Taking a filter of 0.307 yields a loss of 12 taxa or roughly 1.94%
 ```{r}
 filter <- 0.3
 filtered_taxa1 <- tibble(
-  Cont = genefilter_sample(physeq.nct.filt.s, filterfun_sample(function(x) x > 0), A=filter*nsamples(physeq.nct.filt.s)),
-  OTU = names(genefilter_sample(physeq.nct.filt.s, filterfun_sample(function(x) x > 0), A=filter*nsamples(physeq.nct.filt.s)))
+  Cont = genefilter_sample(physeq.filt.nct.s.unify, filterfun_sample(function(x) x > 0), A=filter*nsamples(physeq.filt.nct.s.unify)),
+  OTU = names(genefilter_sample(physeq.filt.nct.s.unify, filterfun_sample(function(x) x > 0), A=filter*nsamples(physeq.filt.nct.s.unify)))
 ) %>% 
   arrange (-Cont)
 cont.count <- filtered_taxa1 %>% count("Cont") 
@@ -248,7 +272,7 @@ cont.count %>%
 The list of contaminants determined by high prevalence in NCTs (threhold 0.3)
 
 ```{r}
-df.fam.melt <- psmelt(physeq.nct.filt.s)
+df.fam.melt <- psmelt(physeq.filt.nct.s.unify)
 df.fam.melt %>% select(OTU, species) %>% 
   unique %>% 
   right_join(filtered_taxa1) %>% 
@@ -266,12 +290,12 @@ We now remove those taxa which have high prevalence in NTC samples out of true s
 p.true.RmLowAbun.RmHighPrev <- prune_taxa(setdiff(taxa_names(p.true.RmLowAbun),filtered_taxa1[filtered_taxa1$Cont==TRUE,] %>% pull("OTU")), p.true.RmLowAbun)
 ```
 
-Now we have *`r nrow(sample_data(p.true.RmLowAbun.RmHighPrev))`* true samples and *`r nrow(otu_table(p.true.RmLowAbun.RmHighPrev))`* taxa. In NCTs, we have *`r nrow(sample_data(physeq.nct.filt.s))`* control samples and *`r nrow(otu_table(physeq.nct.filt.s))`* taxa.
+Now we have *`r nrow(sample_data(p.true.RmLowAbun.RmHighPrev))`* true samples and *`r nrow(otu_table(p.true.RmLowAbun.RmHighPrev))`* taxa. In NCTs, we have *`r nrow(sample_data(physeq.filt.nct.s.unify))`* control samples and *`r nrow(otu_table(physeq.filt.nct.s.unify))`* taxa.
 
 The Venn diagram of taxa between true samples and NCTs is now
 
 ```{r}
-PlotVenn2Sets(rownames(otu_table(p.true.RmLowAbun.RmHighPrev)), rownames(otu_table(physeq.nct.filt.s)), "True samples", "NCT sample")
+PlotVenn2Sets(rownames(otu_table(p.true.RmLowAbun.RmHighPrev)), rownames(otu_table(physeq.filt.nct.s.unify)), "True samples", "NCT sample")
 ```
 
 #### Low prevalence taxas in NCTs
@@ -285,7 +309,7 @@ We need metadata information to proceed
 library("readxl")
 metadata <- read_excel("../raw_data/Metadata_2.xlsx") %>% as.data.frame()
 metadata <- metadata[,c("uniqueID", "sample_side", "sample_nr", "TRUE_control", "DNAex_round", "PCR_round")]
-physeq.comb.filt <- merge_phyloseq(p.true.RmLowAbun.RmHighPrev, physeq.nct.filt.s)
+physeq.comb.filt <- merge_phyloseq(p.true.RmLowAbun.RmHighPrev, physeq.filt.nct.s.unify)
 sample_data(physeq.comb.filt)$is.neg <- sample_data(physeq.comb.filt)$TRUE_control == "control"
 ```
 
@@ -317,23 +341,23 @@ For each condition each batch, we apply Binomial test on each taxa whose prevale
 
 ```{r}
 p <- p.true.RmLowAbun.RmHighPrev #dummy phyloseq as code is work in progress
-p.true.RmLowAbun.RmHLPrev <- Wrapper_Nejman(p.true.RmLowAbun.RmHighPrev,physeq.nct.filt.s,metadata,x = p)
+p.true.RmLowAbun.RmHLPrev <- Wrapper_Nejman(p.true.RmLowAbun.RmHighPrev,physeq.filt.nct.s.unify,metadata,x = p)
 ```
 
 The overlap is now
 
 ```{r}
 PlotVenn2Sets(p.true.RmLowAbun.RmHLPrev %>% otu_table() %>% rownames(),
-              physeq.nct.filt.s %>% otu_table() %>% rownames(),
+              physeq.filt.nct.s.unify %>% otu_table() %>% rownames(),
               "True samples", "NCT samples")
 ```
 
 Further, we have a look at those 59 taxas in NCTs but not contaminants
 
 ```{r}
-physeq.nct.NotCont <- prune_taxa(intersect(physeq.nct.filt.s %>% otu_table() %>% rownames(), 
+physeq.nct.NotCont <- prune_taxa(intersect(physeq.filt.nct.s.unify %>% otu_table() %>% rownames(), 
                                            p.true.RmLowAbun.RmHLPrev %>% otu_table() %>% rownames()),
-                                 physeq.nct.filt.s)
+                                 physeq.filt.nct.s.unify)
 Inspect_taxa_Species(physeq.nct.NotCont, "In NCTs but not contaminants")
 ```
 
