@@ -178,6 +178,7 @@ PlotVenn2Sets <- function(set1, set2, nameset1, nameset2){
   plt <- venn.diagram(
     x = list(set1, set2),
     category.names = c(nameset1 , nameset2),
+    disable.logging = TRUE,
     filename = NULL
   )
   grid::grid.newpage()
