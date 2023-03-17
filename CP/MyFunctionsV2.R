@@ -62,7 +62,7 @@ create.sub.NCT.Sample.type <- function(batch_num,batch_type,meta_data,typeVector
   }
   sub.NCT.Sample.type.idx <- sub_meta_data[sub_meta_data$sample_type == names(typeVector)[i],"uniqueID"]
   sub.NCT.Sample.type <- prune_samples(sample_data(NCT.sample) %>% pull(uniqueID) %in% sub.NCT.Sample.type.idx, NCT.sample)
-  sub.NCT.Sample.type <- prune_taxa(taxa_sums(NCT.sample) >0, sub.NCT.Sample.type)
+  sub.NCT.Sample.type <- prune_taxa(taxa_sums(sub.NCT.Sample.type) >0, sub.NCT.Sample.type)
   return(sub.NCT.Sample.type)
 } 
 
@@ -192,7 +192,7 @@ Wrapper_FERfect <- function(PhyObj){
   res_sim <- PERFect_sim(X = otu)
   # dim(res_sim$filtX) 
   ids.sim<- colnames(res_sim$filtX) 
-  return(prune_taxa(ids.sim, p.true.filt.s))
+  return(prune_taxa(ids.sim, PhyObj))
 }
 
 ## determine a threshold for high prevalence filtering.
