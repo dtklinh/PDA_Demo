@@ -1,0 +1,7 @@
+uniqueID	barcode	sample	sample_side	sample_nr	dnaex	protocol	TRUE_control	PCR_input	PCR_cycles	ng_in_fc	PCR eluate ng/킠	킠 in library	DNAex_round	PCR_round
+404	barcode09	murine	buffer	NTC 3	Invitrogen	IHMS	control	10 킠	35	4,972	9,04	0,55	9	15
+405	barcode10	murine	buffer	NTC 4	Invitrogen	IHMS	control	10 킠	35	1,0509	0,186	5,65	9	15
+406	barcode11	murine	buffer	NTC 5	Invitrogen	IHMS	control	10 킠	35	5,0064	5,96	0,84	9	15
+407	barcode12	murine	buffer	NTC 6	Invitrogen	IHMS	control	10 킠	35	4,995	6,66	0,75	9	15
+408	barcode13	murine	buffer	NTC 7	Invitrogen	IHMS	control	10 킠	35	4,9852	4,12	1,21	9	15
+409	barcode14	murine	buffer	NTC 8	Invitrogen	IHMS	control	10 킠	35	5	5	1	9	15

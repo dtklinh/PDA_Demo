@@ -1,0 +1,13 @@
+uniqueID	barcode	sample	sample_side	sample_nr	dnaex	protocol	TRUE_control	PCR_input	PCR_cycles	ng_in_fc	PCR eluate ng/µL	µL in library	mouse_sex	mouse_age_months	DNAex_round	PCR_round
+75	barcode13	murine	KPC tumor	AN985	Invitrogen	IHMS	TRUE	10 ng	25	0	0	1	m	5,7	8	10
+76	barcode14	murine	KPC tumor	AN985	Invitrogen	IHMS	TRUE	50 ng	25	0,204	0,204	1	m	5,7	8	10
+77	barcode15	murine	KPC tumor	AN985	Invitrogen	IHMS	TRUE	100 ng	25	0,482	0,482	1	m	5,7	8	10
+78	barcode16	murine	KPC tumor	AN985	Invitrogen	IHMS	TRUE	10 ng	35	0,4665	0,622	0,75	m	5,7	8	10
+79	barcode17	murine	KPC tumor	AN985	Invitrogen	IHMS	TRUE	50 ng	35	1,555	6,22	0,25	m	5,7	8	10
+80	barcode18	murine	KPC tumor	AN985	Invitrogen	IHMS	TRUE	100 ng	35	1,705	6,82	0,25	m	5,7	8	10
+81	barcode19	murine	KPC tumor	AN997	Invitrogen	IHMS	TRUE	10 ng	25	0	0	1	m	2,8	8	10
+82	barcode20	murine	KPC tumor	AN997	Invitrogen	IHMS	TRUE	50 ng	25	0,196	0,196	1	m	2,8	8	10
+83	barcode21	murine	KPC tumor	AN997	Invitrogen	IHMS	TRUE	100 ng	25	0,576	0,576	1	m	2,8	8	10
+84	barcode22	murine	KPC tumor	AN997	Invitrogen	IHMS	TRUE	10 ng	35	0	0	1	m	2,8	8	10
+85	barcode23	murine	KPC tumor	AN997	Invitrogen	IHMS	TRUE	50 ng	35	0,274	0,274	1	m	2,8	8	10
+86	barcode24	murine	KPC tumor	AN997	Invitrogen	IHMS	TRUE	100 ng	35	0,4845	0,646	0,75	m	2,8	8	10

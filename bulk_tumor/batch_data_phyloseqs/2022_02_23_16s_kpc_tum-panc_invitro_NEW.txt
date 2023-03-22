@@ -1,0 +1,13 @@
+uniqueID	barcode	sample	sample_side	sample_nr	dnaex	protocol	TRUE_control	PCR_input	PCR_cycles	ng_in_fc	PCR eluate ng/µL	µL in library	mouse_sex	mouse_age_months	DNAex_round	PCR_round
+394	barcode03	murine	KPC_tumor	AN1023	Invitrogen	IHMS	TRUE	50 ng	35	2,05	8,2	0,25	f	3,7	9	14
+395	barcode04	murine	KPC_tumor	AN1044	Invitrogen	IHMS	TRUE	50 ng	35	10,2	51	0,2	m	3,5	9	14
+396	barcode05	murine	KPC_tumor	AN1072	Invitrogen	IHMS	TRUE	50 ng	35	0,723	0,482	1,5	f	4,8	9	14
+397	barcode06	murine	KPC_tumor	AN1078	Invitrogen	IHMS	TRUE	50 ng	35	1,78	1,78	1	m	3,5	9	14
+398	barcode07	murine	KPC_tumor	AN1100	Invitrogen	IHMS	TRUE	50 ng	35	4,84	24,2	0,2	f	6,2	9	14
+399	barcode08	murine	KPC_pancreas	AN1149	Invitrogen	IHMS	TRUE	50 ng	35	1,9	1,9	1	m	3,4	9	14
+400	barcode17	murine	KPC_pancreas	AN1151	Invitrogen	IHMS	TRUE	50 ng	35	2,12	2,12	1	f	3,4	9	14
+401	barcode18	murine	KPC_pancreas	AN1169	Invitrogen	IHMS	TRUE	50 ng	35	2,26	4,52	0,5	m	3,9	9	14
+402	barcode19	murine	KPC_pancreas	AN1172	Invitrogen	IHMS	TRUE	50 ng	35	2,06	2,06	1	f	4,6	9	14
+403	barcode20	murine	KPC_pancreas	AN1185	Invitrogen	IHMS	TRUE	50 ng	35	1,43	1,43	1	f	5,7	9	14
+97	barcode11	murine	KPC_pancreas	AN955	Invitrogen	IHMS	TRUE	50 ng	35	1,47	1,47	1	m	6,1	8	11
+109	barcode23	murine	KPC_pancreas	AN999	Invitrogen	IHMS	TRUE	50 ng	35	0,7263	0,538	1,35	m	6,2	8	11
