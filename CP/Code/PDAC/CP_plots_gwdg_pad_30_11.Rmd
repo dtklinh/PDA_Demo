@@ -1,0 +1,23 @@
+---
+title: "plots for Pad"
+author: "Christoph Petrynowski"
+date: "2022-11-30"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Code used to generate plots in GWDG pad on 30.11.22
+
+```{r}
+plot(y = sample_sums(p.true.filt.s),x = seq(1,nsamples(p.true.filt.s)), xlab = "Sample index", ylab= "Seq-depth", main= "true samples")
+
+plot(y = sample_sums(p.true.filt.s.prev),x = seq(1,nsamples(p.true.filt.s.prev)), xlab = "Sample index", ylab= "Seq-depth", main= "true samples post PERFect") # we started with this seq-depth for true_samples 
+
+plot(y = sample_sums(p.true.prev.postf1f2),x = seq(1,nsamples(p.true.prev.postf1f2)), xlab = "Sample index", ylab= "Seq-depth", main= "true samples post PERFect/Nejman")  # we ended with this seq_depth for true_samples
+
+plot(x=seq(1,nsamples(p.true.prev.postf1f2)),y = otu_table(p.true.prev.postf1f2)["358220",],xlab= "Sample index", ylab= "Count",main = paste("counts of OTU 358220 in true samples", "\nusing cleaned data 30.11.22")) # plot showing certan taxa appear in large quantity only in a select batch. Current hypothesis (30.11.22): these are mostly contaminants
+```
+

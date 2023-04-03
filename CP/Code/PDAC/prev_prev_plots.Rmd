@@ -1,0 +1,813 @@
+---
+title: "Untitled"
+author: "Christoph Petrynowski"
+date: "2023-01-23"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+```
+
+```{r}
+p.comb <- p.comb.filt.s.1500.80
+p.comb.new.true <- p.comb.filt.s.1500.80.true # only true samples
+p.comb.new.nct <- p.comb.filt.s.1500.80.nct # only negative samples
+  #plot how many taxa are present in atleast x% of negative controls
+prev_ntc = tibble(
+  prev.ntc = prevalence(p.comb.new.nct, detection  = 0, sort = TRUE, count = FALSE),
+  OTU =as.factor(names(prevalence(p.comb.new.nct , detection = 0, sort = TRUE, count = FALSE))) 
+)
+
+prev_true = tibble(
+  prev.true = prevalence(p.comb.new.true, detection  = 0, sort = TRUE, count = FALSE),
+  OTU =as.factor(names(prevalence(p.comb.new.true , detection = 0, sort = TRUE, count = FALSE))) 
+)
+
+prev <- prev_true %>% 
+  left_join(prev_ntc) %>% 
+  mutate(prev.ntc = ifelse(is.na(prev.ntc), 0, prev.ntc),
+         prev.true = ifelse(is.na(prev.true), 0, prev.true))
+
+prev_count.mod <- prev %>% # rebuild "prev_count" object 
+  count("prev.ntc") %>% # rebuild "prev_count" object 
+  mutate(prop = freq/nrow(prev)) %>% # rebuild "prev_count" object 
+  arrange(-prev.ntc) %>% #orders the tibble starting with highest prev.ntc value and ending with lowest prev.ntc
+  mutate(csum = cumsum(freq)) %>% #create column containing the cumulative sum of n
+  mutate(cumprop = csum/nrow(prev)) # take the cumsum and divide by the amount of taxa
+# Idea behind this:
+# In previous plots we used to plot the exact number / proportion of bacteria contained in x% of negative controls yielding nejman.figure.jpg / Graph 1 in notepad.
+# Now we plot the proportion of bacteria contained in at least x% of negative controls.
+# x = % of negative controls | y = (sum of all bacteria present in more than x negative controls + bacteria present in x negative controls) / (all bacteria)
+ggplot(prev_count.mod, aes(x= prev.ntc, y = cumprop))+
+  geom_point()+
+  xlab ("% negative controls") +
+  ylab("Proportion bacteria") +
+  theme_bw() +
+  ggtitle("% of bacteria in at least x ntc - % of negative controls included")+
+  theme( axis.text.x = element_text(size=12),
+        axis.text.y = element_text (size=12),
+        axis.title = element_text(size=14, face="bold"))+
+  theme(legend.position = "bottom",
+        legend.title = element_blank(),
+        legend.background = element_rect(size=0.25, linetype="solid", colour ="black"),
+        legend.key.size = unit(4,"mm"))
+
+filter <- 0.27 #CP setting threshold to 27% -> MAYBE USE 23%
+filtered_taxa1 <- tibble(
+  Cont = genefilter_sample(p.comb.new.nct, filterfun_sample(function(x) x > 0), A=filter*nsamples(p.comb.new.nct)),
+  OTU = names(genefilter_sample(p.comb.new.nct, filterfun_sample(function(x) x > 0), A=filter*nsamples(p.comb.new.nct)))
+)
+cont <- which(filtered_taxa1$Cont)
+cont.len <- length(which(filtered_taxa1$Cont))
+bad_taxa1 <- as.data.frame(filtered_taxa1[cont,2])[1:cont.len,1]
+
+
+IDs <- unique(meta(p.comb)$DNAex_round)
+df.condition1.meta <- as.data.frame(matrix(0,nrow = 8,ncol = length(IDs)),row.names = c("n_true_samples","n_nct_samples","n_paraffin_tumor_nct_samples","n_paraffin_normal_nct_samples","n_paraffin_nct_samples","n_buffer_nct_samples","n_pcr_nct_samples","batch_name"))
+vec0 <- rep(0,length(IDs))
+for (i in seq(1,length(IDs))) {
+  vec0[i] <- paste0("DNAex","b",i)
+}
+colnames(df.condition1.meta) <- vec0
+for (i in seq(1,length(IDs))) {
+  b <- subset_samples(p.comb, DNAex_round == IDs[i]) #subset to samples to same DNAex_round 
+  b <- prune_taxa(taxa = (taxa_names(b)[-which(taxa_sums(b) == 0)]),x = b) #this removes taxa with taxa_sums == 0 from the overall batch
+  check1 <- length(which(meta(b)$TRUE_control == "TRUE")) #checks whether the batch contains true_samples
+  check2 <- length(which(meta(b)$TRUE_control == "control")) #checks whether the batch contains nct_sample
+  check3 <- length(which(meta(b)$sample_side == "buffer")) #checks whether the batch contains buffer_nct_samples
+  check4 <- length(which(meta(b)$sample_side == "PCR_ctrl_H2O")) #checks whether the batch contains pcrH2O_nct_samples
+  check5 <- length(which(meta(b)$sample_side == "paraffin_normal")) #checks whether the batch contains paraffinnormal_nct_samples
+  check6 <- length(which(meta(b)$sample_side == "paraffin_tumor")) #checks whether the batch contains paraffintumor_nct_samples
+  df.condition1.meta[1,i] <- check1
+  df.condition1.meta[2,i] <- check2
+  df.condition1.meta[3,i] <- check6
+  df.condition1.meta[4,i] <- check5
+  df.condition1.meta[5,i] <- (check5+check6)
+  df.condition1.meta[6,i] <- check3
+  df.condition1.meta[7,i] <- check4
+  df.condition1.meta[8,i] <- IDs[i]
+  if (check1 == 0) {
+    print(paste0("check1 :",IDs[i]))
+    next}
+  if (check2 == 0) {
+    print(paste0("check2 :",IDs[i]))
+    next}
+  if (check3 != 0) {
+    #perform test
+    b.true <- subset_samples(b,TRUE_control == "TRUE") #subset of true samples in batch
+    b.condition <- subset_samples(b,sample_side == "buffer") #subset of batch_nct_samples in batch
+    b.sub <- merge_phyloseq(b.true,b.condition) # we take the subsets we want, merge them to allow for thorough removal of bacteria
+    if (length(which(taxa_sums(b.sub) == 0)) != 0) {
+    b.sub <- prune_taxa(taxa = (taxa_names(b.sub)[-which(taxa_sums(b.sub) == 0)]),x = b.sub) #this removes taxa with taxa_sums == 0 from our batch subset
+    }
+    b.true <- subset_samples(b.sub,TRUE_control == "TRUE") #create new subset of true samples in batch
+    b.condition <- subset_samples(b.sub,sample_side == "buffer") #create new subset of batch_nct_samples in batch  
+    # Im honest: this is a bit redundant
+    df.filt <- data.frame(x = prevalence(b.true, detection = 0, count = TRUE),
+                        n = nsamples(b.true),
+                        p = prevalence(b.condition, detection = 0, count = FALSE)) #df stores x,n,p for binom.test
+    vec <- seq(1,nrow(df.filt))
+    for (j in vec) {
+    vec[j] <- binom.test(x = df.filt[j,"x"], n = df.filt[j,"n"], p = df.filt[j,"p"],alternative = "greater")$p.value
+    }
+    y <- paste0("df.filt1-buffer-",IDs[i])
+    assign(y,df.filt)
+    df.p <- data.frame(id = rownames(df.filt),
+                       pvalue = vec)
+    x <- paste0("df.p1-buffer-",IDs[i])
+    assign(x,df.p)
+  }
+  if (check4 != 0) {
+    #for DNAex this is mostly irrelevant as PCR_ctrl_H2O has DNAex_round: NA
+    #perform test
+    b.true <- subset_samples(b,TRUE_control == "TRUE") #subset of true samples in batch
+    b.condition <- subset_samples(b,sample_side == "PCR_ctrl_H2O") #subset of batch_nct_samples in batch
+    b.sub <- merge_phyloseq(b.true,b.condition) # we take the subsets we want, merge them to allow for thorough removal of bacteria
+    if (length(which(taxa_sums(b.sub) == 0)) != 0) {
+    b.sub <- prune_taxa(taxa = (taxa_names(b.sub)[-which(taxa_sums(b.sub) == 0)]),x = b.sub) #this removes taxa with taxa_sums == 0 from our batch subset
+    }
+    b.true <- subset_samples(b.sub,TRUE_control == "TRUE") #create new subset of true samples in batch
+    b.condition <- subset_samples(b.sub,sample_side == "PCR_ctrl_H2O") #create new subset of batch_nct_samples in batch  
+    # Im honest: this is a bit redundant
+    df.filt <- data.frame(x = prevalence(b.true, detection = 0, count = TRUE),
+                        n = nsamples(b.true),
+                        p = prevalence(b.condition, detection = 0, count = FALSE)) #df stores x,n,p for binom.test
+    vec <- seq(1,nrow(df.filt))
+    for (j in vec) {
+    vec[j] <- binom.test(x = df.filt[j,"x"], n = df.filt[j,"n"], p = df.filt[j,"p"],alternative = "greater")$p.value
+    }
+    y <- paste0("df.filt1-PCR_ctrl_H2O-",IDs[i])
+    assign(y,df.filt)
+    df.p <- data.frame(id = rownames(df.filt),
+                       pvalue = vec)
+    x <- paste0("df.p1-PCR_ctrl_H2O-",IDs[i])
+    assign(x,df.p)
+  }
+  n_paraffin <- (check5+check6)
+  if (n_paraffin != 0) {
+    #perform test
+    b.true <- subset_samples(b,TRUE_control == "TRUE") #subset of true samples in batch
+    b.condition <- subset_samples(b,sample_side == "paraffin_tumor" |  sample_side == "paraffin_normal") #subset of batch_nct_samples in batch
+    b.sub <- merge_phyloseq(b.true,b.condition) # we take the subsets we want, merge them to allow for thorough removal of bacteria
+    if (length(which(taxa_sums(b.sub) == 0)) != 0) {
+    b.sub <- prune_taxa(taxa = (taxa_names(b.sub)[-which(taxa_sums(b.sub) == 0)]),x = b.sub) #this removes taxa with taxa_sums == 0 from our batch subset
+    }
+    b.true <- subset_samples(b.sub,TRUE_control == "TRUE") #create new subset of true samples in batch
+    b.condition <- subset_samples(b.sub,sample_side == "paraffin_tumor" |  sample_side == "paraffin_normal") #create new subset of batch_nct_samples in batch  
+    # Im honest: this is a bit redundant
+    df.filt <- data.frame(x = prevalence(b.true, detection = 0, count = TRUE),
+                        n = nsamples(b.true),
+                        p = prevalence(b.condition, detection = 0, count = FALSE)) #df stores x,n,p for binom.test
+    vec <- seq(1,nrow(df.filt))
+    for (j in vec) {
+    vec[j] <- binom.test(x = df.filt[j,"x"], n = df.filt[j,"n"], p = df.filt[j,"p"],alternative = "greater")$p.value
+    }
+    y <- paste0("df.filt1-paraffin-",IDs[i])
+    assign(y,df.filt)
+    df.p <- data.frame(id = rownames(df.filt),
+                       pvalue = vec)
+    x <- paste0("df.p1-paraffin-",IDs[i])
+    assign(x,df.p)
+  }
+}
+
+IDs <- unique(meta(p.comb)$PCR_round)
+df.condition2.meta <- as.data.frame(matrix(0,nrow = 8,ncol = length(IDs)),row.names = c("n_true_samples","n_nct_samples","n_paraffin_tumor_nct_samples","n_paraffin_normal_nct_samples","n_paraffin_nct_samples","n_buffer_nct_samples","n_pcr_nct_samples","batch_name"))
+vec0 <- rep(0,length(IDs))
+for (i in seq(1,length(IDs))) {
+  vec0[i] <- paste0("PCR","b",i)
+}
+colnames(df.condition2.meta) <- vec0
+for (i in seq(1,length(IDs))) {
+  b <- subset_samples(p.comb, PCR_round == IDs[i])
+  b <- prune_taxa(taxa = (taxa_names(b)[-which(taxa_sums(b) == 0)]),x = b) #this removes taxa with taxa_sums == 0 from the overall batch
+  check1 <- length(which(meta(b)$TRUE_control == "TRUE")) #checks whether the batch contains true_samples
+  check2 <- length(which(meta(b)$TRUE_control == "control")) #checks whether the batch contains nct_sample
+  check3 <- length(which(meta(b)$sample_side == "buffer")) #checks whether the batch contains buffer_nct_samples
+  check4 <- length(which(meta(b)$sample_side == "PCR_ctrl_H2O")) #checks whether the batch contains pcrH2O_nct_samples
+  check5 <- length(which(meta(b)$sample_side == "paraffin_normal")) #checks whether the batch contains paraffinnormal_nct_samples
+  check6 <- length(which(meta(b)$sample_side == "paraffin_tumor")) #checks whether the batch contains paraffintumor_nct_samples
+  df.condition2.meta[1,i] <- check1
+  df.condition2.meta[2,i] <- check2
+  df.condition2.meta[3,i] <- check6
+  df.condition2.meta[4,i] <- check5
+  df.condition2.meta[5,i] <- (check5+check6)
+  df.condition2.meta[6,i] <- check3
+  df.condition2.meta[7,i] <- check4
+  df.condition2.meta[8,i] <- IDs[i]
+  if (check1 == 0) {
+    print(paste0("check1 :",IDs[i]))
+    next}
+  if (check2 == 0) {
+    print(paste0("check2 :",IDs[i]))
+    next}
+  if (check3 != 0) {
+    #perform test
+    b.true <- subset_samples(b,TRUE_control == "TRUE") #subset of true samples in batch
+    b.condition <- subset_samples(b,sample_side == "buffer") #subset of batch_nct_samples in batch
+    b.sub <- merge_phyloseq(b.true,b.condition) # we take the subsets we want, merge them to allow for thorough removal of bacteria
+    if (length(which(taxa_sums(b.sub) == 0)) != 0) {
+    b.sub <- prune_taxa(taxa = (taxa_names(b.sub)[-which(taxa_sums(b.sub) == 0)]),x = b.sub) #this removes taxa with taxa_sums == 0 from our batch subset
+    }
+    b.true <- subset_samples(b.sub,TRUE_control == "TRUE") #create new subset of true samples in batch
+    b.condition <- subset_samples(b.sub,sample_side == "buffer") #create new subset of batch_nct_samples in batch  
+    # Im honest: this is a bit redundant
+    df.filt <- data.frame(x = prevalence(b.true, detection = 0, count = TRUE),
+                        n = nsamples(b.true),
+                        p = prevalence(b.condition, detection = 0, count = FALSE)) #df stores x,n,p for binom.test
+    vec <- seq(1,nrow(df.filt))
+    for (j in vec) {
+    vec[j] <- binom.test(x = df.filt[j,"x"], n = df.filt[j,"n"], p = df.filt[j,"p"],alternative = "greater")$p.value
+    }
+    y <- paste0("df.filt2-buffer-",IDs[i])
+    assign(y,df.filt)
+    df.p <- data.frame(id = rownames(df.filt),
+                       pvalue = vec)
+    x <- paste0("df.p2-buffer-",IDs[i])
+    assign(x,df.p)
+  }
+  if (check4 != 0) {
+    #for DNAex this is mostly irrelevant as PCR_ctrl_H2O has DNAex_round: NA
+    #perform test
+    b.true <- subset_samples(b,TRUE_control == "TRUE") #subset of true samples in batch
+    b.condition <- subset_samples(b,sample_side == "PCR_ctrl_H2O") #subset of batch_nct_samples in batch
+    b.sub <- merge_phyloseq(b.true,b.condition) # we take the subsets we want, merge them to allow for thorough removal of bacteria
+    if (length(which(taxa_sums(b.sub) == 0)) != 0) {
+    b.sub <- prune_taxa(taxa = (taxa_names(b.sub)[-which(taxa_sums(b.sub) == 0)]),x = b.sub) #this removes taxa with taxa_sums == 0 from our batch subset
+    }
+    b.true <- subset_samples(b.sub,TRUE_control == "TRUE") #create new subset of true samples in batch
+    b.condition <- subset_samples(b.sub,sample_side == "PCR_ctrl_H2O") #create new subset of batch_nct_samples in batch  
+    # Im honest: this is a bit redundant
+    df.filt <- data.frame(x = prevalence(b.true, detection = 0, count = TRUE),
+                        n = nsamples(b.true),
+                        p = prevalence(b.condition, detection = 0, count = FALSE)) #df stores x,n,p for binom.test
+    vec <- seq(1,nrow(df.filt))
+    for (j in vec) {
+    vec[j] <- binom.test(x = df.filt[j,"x"], n = df.filt[j,"n"], p = df.filt[j,"p"],alternative = "greater")$p.value
+    }
+    y <- paste0("df.filt2-PCR_ctrl_H2O-",IDs[i])
+    assign(y,df.filt)
+    df.p <- data.frame(id = rownames(df.filt),
+                       pvalue = vec)
+    x <- paste0("df.p2-PCR_ctrl_H2O-",IDs[i])
+    assign(x,df.p)
+  }
+  n_paraffin <- (check5+check6)
+  if (n_paraffin != 0) {
+    #perform test
+    b.true <- subset_samples(b,TRUE_control == "TRUE") #subset of true samples in batch
+    b.condition <- subset_samples(b,sample_side == "paraffin_tumor" |  sample_side == "paraffin_normal") #subset of batch_nct_samples in batch
+    b.sub <- merge_phyloseq(b.true,b.condition) # we take the subsets we want, merge them to allow for thorough removal of bacteria
+    if (length(which(taxa_sums(b.sub) == 0)) != 0) {
+    b.sub <- prune_taxa(taxa = (taxa_names(b.sub)[-which(taxa_sums(b.sub) == 0)]),x = b.sub) #this removes taxa with taxa_sums == 0 from our batch subset
+    }
+    b.true <- subset_samples(b.sub,TRUE_control == "TRUE") #create new subset of true samples in batch
+    b.condition <- subset_samples(b.sub,sample_side == "paraffin_tumor" |  sample_side == "paraffin_normal") #create new subset of batch_nct_samples in batch  
+    # Im honest: this is a bit redundant
+    df.filt <- data.frame(x = prevalence(b.true, detection = 0, count = TRUE),
+                        n = nsamples(b.true),
+                        p = prevalence(b.condition, detection = 0, count = FALSE)) #df stores x,n,p for binom.test
+    vec <- seq(1,nrow(df.filt))
+    for (j in vec) {
+    vec[j] <- binom.test(x = df.filt[j,"x"], n = df.filt[j,"n"], p = df.filt[j,"p"],alternative = "greater")$p.value
+    }
+    y <- paste0("df.filt2-paraffin-",IDs[i])
+    assign(y,df.filt)
+    df.p <- data.frame(id = rownames(df.filt),
+                       pvalue = vec)
+    x <- paste0("df.p2-paraffin-",IDs[i])
+    assign(x,df.p)
+  }
+}
+
+bad_taxa <- list()
+bad_taxa <- list.append(bad_taxa,`df.p1-buffer-1`[which(x = `df.p1-buffer-1`$pvalue >= 0.05),1])
+bad_taxa <- list.append(bad_taxa,`df.p1-buffer-2`[which(x = `df.p1-buffer-2`$pvalue >= 0.05),1])
+bad_taxa <- list.append(bad_taxa,`df.p1-buffer-3`[which(x = `df.p1-buffer-3`$pvalue >= 0.05),1])
+bad_taxa <- list.append(bad_taxa,`df.p1-buffer-4`[which(x = `df.p1-buffer-4`$pvalue >= 0.05),1])
+bad_taxa <- list.append(bad_taxa,`df.p1-buffer-5`[which(x = `df.p1-buffer-5`$pvalue >= 0.05),1])
+bad_taxa <- list.append(bad_taxa,`df.p1-buffer-6`[which(x = `df.p1-buffer-6`$pvalue >= 0.05),1])
+bad_taxa <- list.append(bad_taxa,`df.p1-paraffin-1`[which(x = `df.p1-paraffin-1`$pvalue >= 0.05),1])
+bad_taxa <- list.append(bad_taxa,`df.p1-paraffin-2`[which(x = `df.p1-paraffin-2`$pvalue >= 0.05),1])
+bad_taxa <- list.append(bad_taxa,`df.p1-paraffin-3`[which(x = `df.p1-paraffin-3`$pvalue >= 0.05),1])
+bad_taxa <- list.append(bad_taxa,`df.p1-paraffin-4`[which(x = `df.p1-paraffin-4`$pvalue >= 0.05),1])
+bad_taxa <- list.append(bad_taxa,`df.p1-paraffin-5`[which(x = `df.p1-paraffin-5`$pvalue >= 0.05),1])
+bad_taxa <- list.append(bad_taxa,`df.p1-paraffin-6`[which(x = `df.p1-paraffin-6`$pvalue >= 0.05),1])
+
+bad_taxa <- list.append(bad_taxa,`df.p2-buffer-8`[which(x = `df.p2-buffer-8`$pvalue >= 0.05),1])
+bad_taxa <- list.append(bad_taxa,`df.p2-PCR_ctrl_H2O-1`[which(x = `df.p2-PCR_ctrl_H2O-1`$pvalue >= 0.05),1])
+bad_taxa <- list.append(bad_taxa,`df.p2-PCR_ctrl_H2O-2`[which(x = `df.p2-PCR_ctrl_H2O-2`$pvalue >= 0.05),1])
+bad_taxa <- list.append(bad_taxa,`df.p2-paraffin-8`[which(x = `df.p2-paraffin-8`$pvalue >= 0.05),1])
+
+a <- union(bad_taxa[[1]],bad_taxa[[2]])
+b <- union(bad_taxa[[3]],bad_taxa[[4]])
+c <- union(bad_taxa[[5]],bad_taxa[[6]])
+d <- union(bad_taxa[[7]],bad_taxa[[8]])
+e <- union(bad_taxa[[9]],bad_taxa[[10]])
+f <- union(bad_taxa[[11]],bad_taxa[[12]])
+g <- union(bad_taxa[[13]],bad_taxa[[14]])
+h <- union(bad_taxa[[15]],bad_taxa[[16]])
+
+a <- union(a,b)
+c <- union(c,d)
+e <- union(e,f)
+g <- union(g,h)
+
+a <- union(a,c)
+e <- union(e,g)
+
+bad_taxa <- union(a,e)
+
+length(bad_taxa)
+length(bad_taxa1)
+```
+```{r}
+bad_taxa2 <- union(bad_taxa,bad_taxa1)
+```
+
+
+# pre-prev plot using high-prevalent filter from Nejman
+```{r}
+# Make phyloseq object of presence-absence in negative controls and true samples
+ps.pa <- transform_sample_counts(p.comb.filt.s.1500.80, function(abund) 1*(abund>0))
+ps.pa.neg <- prune_samples(sample_data(ps.pa)$TRUE_control == "control", ps.pa)
+ps.pa.pos <- prune_samples(sample_data(ps.pa)$TRUE_control == "TRUE", ps.pa)
+
+contaminant.nej <- taxa_names(p.comb.filt.s.1500.80) %in% bad_taxa1
+contaminant.nej <- as.character(contaminant.nej)
+df.pa <- data.frame(pa.pos=taxa_sums(ps.pa.pos), pa.neg=taxa_sums(ps.pa.neg),
+                      contaminant=contaminant.nej)
+ggplot(data=df.pa, aes(x=pa.neg, y=pa.pos, color=contaminant)) + geom_point() +
+  xlab("Prevalence (Negative Controls)") + ylab("Prevalence (True Samples)")
+```
+
+# prev-prev plot using per batch-type, per batch, per condition filter
+```{r}
+# Make phyloseq object of presence-absence in negative controls and true samples
+ps.pa <- transform_sample_counts(p.comb.filt.s.1500.80, function(abund) 1*(abund>0))
+ps.pa.neg <- prune_samples(sample_data(ps.pa)$TRUE_control == "control", ps.pa)
+ps.pa.pos <- prune_samples(sample_data(ps.pa)$TRUE_control == "TRUE", ps.pa)
+
+contaminant.nej <- taxa_names(p.comb.filt.s.1500.80) %in% bad_taxa2
+contaminant.nej <- as.character(contaminant.nej)
+df.pa <- data.frame(pa.pos=taxa_sums(ps.pa.pos), pa.neg=taxa_sums(ps.pa.neg),
+                      contaminant=contaminant.nej)
+ggplot(data=df.pa, aes(x=pa.neg, y=pa.pos, color=contaminant)) + geom_point() +
+  xlab("Prevalence (Negative Controls)") + ylab("Prevalence (True Samples)")
+```
+
+# prev-prev plot ContaminantRemover
+```{r}
+# Make phyloseq object of presence-absence in negative controls and true samples
+ps.pa <- transform_sample_counts(p.comb.filt.s.1500.80, function(abund) 1*(abund>0))
+ps.pa.neg <- prune_samples(sample_data(ps.pa)$TRUE_control == "control", ps.pa)
+ps.pa.pos <- prune_samples(sample_data(ps.pa)$TRUE_control == "TRUE", ps.pa)
+
+p.comb.filt.s.1500.80.nct <- subset_samples(p.comb.filt.s.1500.80,TRUE_control == "control") #only NCT samples
+p.comb.filt.s.1500.80.nct <- prune_taxa(x = p.comb.filt.s.1500.80.nct,taxa = taxa_names(p.comb.filt.s.1500.80.nct)[-(which(taxa_sums(p.comb.filt.s.1500.80.nct)==0))]) #only taxa found in NCT samples
+
+contaminant.nej <- taxa_names(p.comb.filt.s.1500.80) %in% taxa_names(p.comb.filt.s.1500.80.nct)
+contaminant.nej <- as.character(contaminant.nej)
+df.pa <- data.frame(pa.pos=taxa_sums(ps.pa.pos), pa.neg=taxa_sums(ps.pa.neg),
+                      contaminant=contaminant.nej)
+ggplot(data=df.pa, aes(x=pa.neg, y=pa.pos, color=contaminant)) + geom_point() +
+  xlab("Prevalence (Negative Controls)") + ylab("Prevalence (True Samples)")
+```
+combine Nejman (bad_taxa2) with removal of taxa only present in NCT samples
+#prev-prev plot Nejman + no-only-NCT taxa
+```{r}
+p.comb.filt.s.1500.80.true <- subset_samples(p.comb.filt.s.1500.80,TRUE_control=="TRUE")
+bad_taxa.nct <- taxa_names(p.comb.filt.s.1500.80.true)[(which(taxa_sums(p.comb.filt.s.1500.80.true)==0))]
+
+bad_taxa3 <- union(bad_taxa2,bad_taxa.nct)
+
+# Make phyloseq object of presence-absence in negative controls and true samples
+ps.pa <- transform_sample_counts(p.comb.filt.s.1500.80, function(abund) 1*(abund>0))
+ps.pa.neg <- prune_samples(sample_data(ps.pa)$TRUE_control == "control", ps.pa)
+ps.pa.pos <- prune_samples(sample_data(ps.pa)$TRUE_control == "TRUE", ps.pa)
+
+contaminant.nej <- taxa_names(p.comb.filt.s.1500.80) %in% bad_taxa3
+contaminant.nej <- as.character(contaminant.nej)
+df.pa <- data.frame(pa.pos=taxa_sums(ps.pa.pos), pa.neg=taxa_sums(ps.pa.neg),
+                      contaminant=contaminant.nej)
+ggplot(data=df.pa, aes(x=pa.neg, y=pa.pos, color=contaminant)) + geom_point() +
+  xlab("Prevalence (Negative Controls)") + ylab("Prevalence (True Samples)")
+
+physeq.control <- subset_taxa(p.comb.filt.s.1500.80, !(taxa_names(p.comb.filt.s.1500.80) %in% bad_taxa3))
+noncontamdf.prev <- isNotContaminant(physeq.control, method = "prevalence", neg="is.neg",threshold=0.5,detailed = TRUE) # null-hypothesis: is contaminant / below threshold we reject null-hypothesis
+hist(noncontamdf.prev$p, 100, ylim = c(0,300), xlim = c(0,1))
+```
+
+```{r}
+p.nocont <- subset_taxa(p.comb.filt.s.1500.80, !(taxa_names(p.comb.filt.s.1500.80) %in% bad_taxa3))
+p.done <- subset_samples(physeq = p.nocont, TRUE_control=="TRUE")
+
+# Alpha diversity
+aindex <- estimate_richness(physeq = otu_table(p.done), measures = c("Observed","Shannon","Simpson","InvSimpson", "Chao1","ACE"))
+
+aindex$sample_side <- meta(p.done)$sample_side
+aindex$sample_side <- factor(aindex$sample_side)
+
+comb <- split(t(combn(levels(aindex$sample_side), 2)),seq(nrow(t(combn(levels(aindex$sample_side), 2)))))
+data <- reshape2::melt(aindex)
+ggplot(data, aes(x = sample_side,y = value)) +
+  # Outliers are removed, because otherwise each data point would be plotted twice; 
+  # as an outlier of boxplot and as a point of dotplot.
+  geom_boxplot(outlier.shape = NA) + 
+  geom_jitter(width = 0.2) + 
+  ggtitle("ContaminantRemover approach - alpha diversity") +
+  labs(x = "sample type") +
+  geom_signif(comparisons = comb, map_signif_level = FALSE,) +
+  theme(text = element_text(size = 10)) +
+  facet_wrap(~ variable, scales = "free_y")
+
+normal_count <- as_tibble(sample_data(p.done)) %>% filter(sample_side == "normal") %>% count("sample_side") %>% pull(freq)
+tumor_count <- as_tibble(sample_data(p.done)) %>% filter(sample_side == "tumor") %>% count("sample_side") %>% pull(freq)
+df <- meta(p.done) # Put sample_data into a ggplot-friendly data.frame
+df$LibrarySize <- sample_sums(p.done) # add LibrarySize for each sample
+df <- df[order(df$LibrarySize),] # order samples (dataframe) based on LibrarySize in ascending order (this will be our y_value for ggplot)
+df$Index <- seq(nrow(df)) # give each row an index (this will be our x_value for ggplot)
+ggplot(data=df, aes(x=Index, y=LibrarySize, color=sample_side)) + geom_point()  + theme_bw() + ggtitle("Library size true samples 1500.80")+
+  scale_color_brewer(palette = "Set1", labels=c(paste("Normal samples\nn =", normal_count, sep = " "), paste("Tumor samples\nn =", tumor_count, sep = " ")))+
+  theme (axis.text=element_text(size=14),
+        axis.title=element_text(size=16,face="bold"),
+        legend.text = element_text(size = 12),
+        legend.title = element_blank())
+```
+
+```{r}
+p.nocont <- subset_samples(physeq = p.comb.filt.s.1500.80, TRUE_control=="TRUE")
+p.nocont <- subset_taxa(p.comb.filt.s.1500.80, !(taxa_names(p.comb.filt.s.1500.80) %in% bad_taxa3))
+p.nocont <- merge_phyloseq(p.nocont,p.comb.filt.s.1500.80.nct)
+p.nocont <- tax_glom(p.nocont, taxrank = "species", NArm = TRUE)
+
+noncontamdf.prev5 <- isNotContaminant(p.nocont, method = "prevalence", neg="is.neg",threshold=0.5,detailed = TRUE) # null-hypothesis: is contaminant / below threshold we reject null-hypothesis
+hist(noncontamdf.prev5$p, 100, ylim = c(0,300), xlim = c(0,1))
+
+noncontamdf.prev3 <- isNotContaminant(p.nocont, method = "prevalence", neg="is.neg",threshold=0.3,detailed = TRUE) # null-hypothesis: is contaminant / below threshold we reject null-hypothesis
+
+noncontamdf.prev8 <- isNotContaminant(p.nocont, method = "prevalence", neg="is.neg",threshold=0.8,detailed = TRUE) # null-hypothesis: is contaminant / below threshold we reject null-hypothesis -> below threshold it is true OTU
+```
+
+```{r}
+p.comb.filt.s.1500.80.r <- prune_taxa(taxa = taxa_names(p.comb.s.try)[(noncontamdf.prev$not.contaminant)],x = p.comb.s.try)
+```
+
+```{r}
+df <- noncontamdf.prev5[intersect(which(noncontamdf.prev5$p > 0.4),which(noncontamdf.prev5$p < 0.5)),]
+rownames(df)
+p <- prune_taxa(taxa = rownames(df),x = p.done)
+normal_count <- as_tibble(sample_data(p)) %>% filter(sample_side == "normal") %>% count("sample_side") %>% pull(freq)
+tumor_count <- as_tibble(sample_data(p)) %>% filter(sample_side == "tumor") %>% count("sample_side") %>% pull(freq)
+df <- meta(p) # Put sample_data into a ggplot-friendly data.frame
+df$LibrarySize <- sample_sums(p) # add LibrarySize for each sample
+df <- df[order(df$LibrarySize),] # order samples (dataframe) based on LibrarySize in ascending order (this will be our y_value for ggplot)
+df$Index <- seq(nrow(df)) # give each row an index (this will be our x_value for ggplot)
+ggplot(data=df, aes(x=Index, y=LibrarySize, color=sample_side)) + geom_point()  + theme_bw() + ggtitle("Library size true samples 1500.80")+
+  scale_color_brewer(palette = "Set1", labels=c(paste("Normal samples\nn =", normal_count, sep = " "), paste("Tumor samples\nn =", tumor_count, sep = " ")))+
+  theme (axis.text=element_text(size=14),
+        axis.title=element_text(size=16,face="bold"),
+        legend.text = element_text(size = 12),
+        legend.title = element_blank())
+taxa_sums(p)
+sort(taxa_sums(p),decreasing = TRUE)[1:5]
+tax_table(p)[c("2058152","1398","202954","2070347","465721"),7]
+```
+
+# prev-prev PERFect - alpha 5%
+```{r}
+# Perfect prevalence filtering
+otu = as(otu_table(p.comb.filt.s.1500.80.true), "matrix")
+if(taxa_are_rows(p.comb.filt.s.1500.80.true)){otu <- t(otu)}
+otu = as_tibble(otu)
+res_sim <- PERFect_sim(X = otu,alpha = 0.05)
+dim(res_sim$filtX)
+ids.sim<- colnames(res_sim$filtX)
+
+pvals_Plots(PERFect = res_sim,X = otu,alpha = 0.05)
+
+# Make phyloseq object of presence-absence in negative controls and true samples
+ps.pa <- transform_sample_counts(p.comb.filt.s.1500.80, function(abund) 1*(abund>0))
+ps.pa.neg <- prune_samples(sample_data(ps.pa)$TRUE_control == "control", ps.pa)
+ps.pa.pos <- prune_samples(sample_data(ps.pa)$TRUE_control == "TRUE", ps.pa)
+
+noncontaminant <- taxa_names(p.comb.filt.s.1500.80) %in% ids.sim
+noncontaminant <- as.character(noncontaminant)
+df.pa <- data.frame(pa.pos=taxa_sums(ps.pa.pos), pa.neg=taxa_sums(ps.pa.neg),
+                      noncontaminant=noncontaminant)
+ggplot(data=df.pa, aes(x=pa.neg, y=pa.pos, color=noncontaminant)) + geom_point() +
+  xlab("Prevalence (Negative Controls)") + ylab("Prevalence (True Samples)")
+
+physeq.control <-  prune_taxa(ids.sim, p.comb.filt.s.1500.80)
+noncontamdf.prev <- isNotContaminant(physeq.control, method = "prevalence", neg="is.neg",threshold=0.5,detailed = TRUE) # null-hypothesis: is contaminant / below threshold we reject null-hypothesis
+hist(noncontamdf.prev$p, 100, ylim = c(0,300), xlim = c(0,1))
+```
+
+# prev-prev PERFect - alpha 10%
+```{r}
+# Perfect prevalence filtering
+otu = as(otu_table(p.comb.filt.s.1500.80.true), "matrix")
+if(taxa_are_rows(p.comb.filt.s.1500.80.true)){otu <- t(otu)}
+otu = as_tibble(otu)
+res_sim <- PERFect_sim(X = otu,alpha = 0.1)
+dim(res_sim$filtX)
+ids.sim<- colnames(res_sim$filtX)
+
+pvals_Plots(PERFect = res_sim,X = otu,alpha = 0.1)
+
+# Make phyloseq object of presence-absence in negative controls and true samples
+ps.pa <- transform_sample_counts(p.comb.filt.s.1500.80, function(abund) 1*(abund>0))
+ps.pa.neg <- prune_samples(sample_data(ps.pa)$TRUE_control == "control", ps.pa)
+ps.pa.pos <- prune_samples(sample_data(ps.pa)$TRUE_control == "TRUE", ps.pa)
+
+noncontaminant <- taxa_names(p.comb.filt.s.1500.80) %in% ids.sim
+noncontaminant <- as.character(noncontaminant)
+df.pa <- data.frame(pa.pos=taxa_sums(ps.pa.pos), pa.neg=taxa_sums(ps.pa.neg),
+                      noncontaminant=noncontaminant)
+ggplot(data=df.pa, aes(x=pa.neg, y=pa.pos, color=noncontaminant)) + geom_point() +
+  xlab("Prevalence (Negative Controls)") + ylab("Prevalence (True Samples)")
+
+
+physeq.control <-  prune_taxa(ids.sim, p.comb.filt.s.1500.80)
+noncontamdf.prev <- isNotContaminant(physeq.control, method = "prevalence", neg="is.neg",threshold=0.5,detailed = TRUE) # null-hypothesis: is contaminant / below threshold we reject null-hypothesis
+hist(noncontamdf.prev$p, 100, ylim = c(0,300), xlim = c(0,1))
+```
+
+# prev-prev PERFect - alpha 15%
+```{r}
+# Perfect prevalence filtering
+otu = as(otu_table(p.comb.filt.s.1500.80.true), "matrix")
+if(taxa_are_rows(p.comb.filt.s.1500.80.true)){otu <- t(otu)}
+otu = as_tibble(otu)
+res_sim <- PERFect_sim(X = otu,alpha = 0.15)
+dim(res_sim$filtX)
+ids.sim<- colnames(res_sim$filtX)
+
+pvals_Plots(PERFect = res_sim,X = otu,alpha = 0.15)
+
+# Make phyloseq object of presence-absence in negative controls and true samples
+ps.pa <- transform_sample_counts(p.comb.filt.s.1500.80, function(abund) 1*(abund>0))
+ps.pa.neg <- prune_samples(sample_data(ps.pa)$TRUE_control == "control", ps.pa)
+ps.pa.pos <- prune_samples(sample_data(ps.pa)$TRUE_control == "TRUE", ps.pa)
+
+noncontaminant <- taxa_names(p.comb.filt.s.1500.80) %in% ids.sim
+noncontaminant <- as.character(noncontaminant)
+df.pa <- data.frame(pa.pos=taxa_sums(ps.pa.pos), pa.neg=taxa_sums(ps.pa.neg),
+                      noncontaminant=noncontaminant)
+ggplot(data=df.pa, aes(x=pa.neg, y=pa.pos, color=noncontaminant)) + geom_point() +
+  xlab("Prevalence (Negative Controls)") + ylab("Prevalence (True Samples)")
+
+physeq.control <-  prune_taxa(ids.sim, p.comb.filt.s.1500.80)
+noncontamdf.prev <- isNotContaminant(physeq.control, method = "prevalence", neg="is.neg",threshold=0.5,detailed = TRUE) # null-hypothesis: is contaminant / below threshold we reject null-hypothesis
+hist(noncontamdf.prev$p, 100, ylim = c(0,300), xlim = c(0,1))
+```
+
+
+## Perm_PERFect alpha 5% - order: pval
+```{r}
+otu = as(otu_table(p.comb.filt.s.1500.80.true), "matrix")
+if(taxa_are_rows(p.comb.filt.s.1500.80.true)){otu <- t(otu)}
+otu = as_tibble(otu)
+res_sim <- PERFect_sim(X = otu, alpha = 0.05)
+dim(res_sim$filtX)
+ids.sim<- colnames(res_sim$filtX)
+#physeq.control <-  prune_taxa(ids.sim, p.comb.filt.s.1500.80.true)
+
+ord.pval <- pvals_Order(Counts = otu,res_sim = res_sim )
+
+otu = as(otu_table(p.comb.filt.s.1500.80.true), "matrix")
+if(taxa_are_rows(p.comb.filt.s.1500.80.true)){otu <- t(otu)}
+otu = as_tibble(otu)
+res_perm <- PERFect_perm(X = otu, Order.user = ord.pval,alpha = 0.05,algorithm = "full")
+dim(res_perm$filtX)
+ids.perm <- colnames(res_perm$filtX)
+
+pvals_Plots(PERFect = res_perm,X = otu,alpha = 0.05)
+
+hist(res_perm$pvals, 100, ylim = c(0,300), xlim = c(0,1))
+# Make phyloseq object of presence-absence in negative controls and true samples
+ps.pa <- transform_sample_counts(p.comb.filt.s.1500.80, function(abund) 1*(abund>0))
+ps.pa.neg <- prune_samples(sample_data(ps.pa)$TRUE_control == "control", ps.pa)
+ps.pa.pos <- prune_samples(sample_data(ps.pa)$TRUE_control == "TRUE", ps.pa)
+
+noncontaminant <- taxa_names(p.comb.filt.s.1500.80) %in% ids.perm
+noncontaminant <- as.character(noncontaminant)
+df.pa <- data.frame(pa.pos=taxa_sums(ps.pa.pos), pa.neg=taxa_sums(ps.pa.neg),
+                      noncontaminant=noncontaminant)
+ggplot(data=df.pa, aes(x=pa.neg, y=pa.pos, color=noncontaminant)) + geom_point() +
+  xlab("Prevalence (Negative Controls)") + ylab("Prevalence (True Samples)")
+
+### Decontam: perm-PERFect 5%
+physeq.controlA <-  prune_taxa(ids.perm, p.comb.filt.s.1500.80)
+noncontamdf.prev <- isNotContaminant(physeq.controlA, method = "prevalence", neg="is.neg",threshold=0.5,detailed = TRUE) # null-hypothesis: is contaminant / below threshold we reject null-hypothesis
+hist(noncontamdf.prev$p, 100, ylim = c(0,300), xlim = c(0,1))
+```
+
+## Perm_PERFect alpha 5% - order: NCw
+```{r}
+otu = as(otu_table(p.comb.filt.s.1500.80.true), "matrix")
+if(taxa_are_rows(p.comb.filt.s.1500.80.true)){otu <- t(otu)}
+otu = as_tibble(otu)
+res_sim <- PERFect_sim(X = otu, alpha = 0.05)
+dim(res_sim$filtX)
+ids.sim<- colnames(res_sim$filtX)
+#physeq.control <-  prune_taxa(ids.sim, p.comb.filt.s.1500.80.true)
+
+ord.pval <- NCw_Order(Counts = otu)
+
+otu = as(otu_table(p.comb.filt.s.1500.80.true), "matrix")
+if(taxa_are_rows(p.comb.filt.s.1500.80.true)){otu <- t(otu)}
+otu = as_tibble(otu)
+res_perm <- PERFect_perm(X = otu, Order.user = ord.pval,alpha = 0.05,algorithm = "full")
+dim(res_perm$filtX)
+ids.perm <- colnames(res_perm$filtX)
+
+pvals_Plots(PERFect = res_perm,X = otu,alpha = 0.05)
+
+hist(res_perm$pvals, 100, ylim = c(0,300), xlim = c(0,1))
+
+# Make phyloseq object of presence-absence in negative controls and true samples
+ps.pa <- transform_sample_counts(p.comb.filt.s.1500.80, function(abund) 1*(abund>0))
+ps.pa.neg <- prune_samples(sample_data(ps.pa)$TRUE_control == "control", ps.pa)
+ps.pa.pos <- prune_samples(sample_data(ps.pa)$TRUE_control == "TRUE", ps.pa)
+
+noncontaminant <- taxa_names(p.comb.filt.s.1500.80) %in% ids.perm
+noncontaminant <- as.character(noncontaminant)
+df.pa <- data.frame(pa.pos=taxa_sums(ps.pa.pos), pa.neg=taxa_sums(ps.pa.neg),
+                      noncontaminant=noncontaminant)
+ggplot(data=df.pa, aes(x=pa.neg, y=pa.pos, color=noncontaminant)) + geom_point() +
+  xlab("Prevalence (Negative Controls)") + ylab("Prevalence (True Samples)")
+
+### Decontam: perm-PERFect 5%
+physeq.controlB <-  prune_taxa(ids.perm, p.comb.filt.s.1500.80)
+noncontamdf.prev <- isNotContaminant(physeq.controlB, method = "prevalence", neg="is.neg",threshold=0.5,detailed = TRUE) # null-hypothesis: is contaminant / below threshold we reject null-hypothesis
+hist(noncontamdf.prev$p, 100, ylim = c(0,300), xlim = c(0,1))
+```
+
+## Perm_PERFect alpha 10% - order pval
+```{r}
+otu = as(otu_table(p.comb.filt.s.1500.80.true), "matrix")
+if(taxa_are_rows(p.comb.filt.s.1500.80.true)){otu <- t(otu)}
+otu = as_tibble(otu)
+res_sim <- PERFect_sim(X = otu,alpha = 0.1)
+dim(res_sim$filtX)
+ids.sim<- colnames(res_sim$filtX)
+#physeq.control <-  prune_taxa(ids.sim, p.comb.filt.s.1500.80.true)
+
+ord.pval <- pvals_Order(Counts = otu,res_sim = res_sim )
+
+otu = as(otu_table(p.comb.filt.s.1500.80.true), "matrix")
+if(taxa_are_rows(p.comb.filt.s.1500.80.true)){otu <- t(otu)}
+otu = as_tibble(otu)
+res_perm <- PERFect_perm(X = otu, Order.user = ord.pval,alpha = 0.1,algorithm = "full")
+dim(res_perm$filtX)
+ids.perm <- colnames(res_perm$filtX)
+
+pvals_Plots(PERFect = res_perm,X = otu,alpha = 0.1)
+
+hist(res_perm$pvals, 100, ylim = c(0,300), xlim = c(0,1))
+
+# Make phyloseq object of presence-absence in negative controls and true samples
+ps.pa <- transform_sample_counts(p.comb.filt.s.1500.80, function(abund) 1*(abund>0))
+ps.pa.neg <- prune_samples(sample_data(ps.pa)$TRUE_control == "control", ps.pa)
+ps.pa.pos <- prune_samples(sample_data(ps.pa)$TRUE_control == "TRUE", ps.pa)
+
+noncontaminant <- taxa_names(p.comb.filt.s.1500.80) %in% ids.perm
+noncontaminant <- as.character(noncontaminant)
+df.pa <- data.frame(pa.pos=taxa_sums(ps.pa.pos), pa.neg=taxa_sums(ps.pa.neg),
+                      noncontaminant=noncontaminant)
+ggplot(data=df.pa, aes(x=pa.neg, y=pa.pos, color=noncontaminant)) + geom_point() +
+  xlab("Prevalence (Negative Controls)") + ylab("Prevalence (True Samples)")
+
+### Decontam: perm-PERFect 10%
+physeq.controlC <-  prune_taxa(ids.perm, p.comb.filt.s.1500.80)
+noncontamdf.prev <- isNotContaminant(physeq.controlC, method = "prevalence", neg="is.neg",threshold=0.5,detailed = TRUE) # null-hypothesis: is contaminant / below threshold we reject null-hypothesis
+hist(noncontamdf.prev$p, 100, ylim = c(0,300), xlim = c(0,1))
+```
+
+## Perm_PERFect alpha 10% - order: NCw
+```{r}
+otu = as(otu_table(p.comb.filt.s.1500.80.true), "matrix")
+if(taxa_are_rows(p.comb.filt.s.1500.80.true)){otu <- t(otu)}
+otu = as_tibble(otu)
+res_sim <- PERFect_sim(X = otu, alpha = 0.1)
+dim(res_sim$filtX)
+ids.sim<- colnames(res_sim$filtX)
+#physeq.control <-  prune_taxa(ids.sim, p.comb.filt.s.1500.80.true)
+
+ord.pval <- NCw_Order(Counts = otu)
+
+otu = as(otu_table(p.comb.filt.s.1500.80.true), "matrix")
+if(taxa_are_rows(p.comb.filt.s.1500.80.true)){otu <- t(otu)}
+otu = as_tibble(otu)
+res_perm <- PERFect_perm(X = otu, Order.user = ord.pval,alpha = 0.1,algorithm = "full")
+dim(res_perm$filtX)
+ids.perm <- colnames(res_perm$filtX)
+
+pvals_Plots(PERFect = res_perm,X = otu,alpha = 0.1)
+
+hist(res_perm$pvals, 100, ylim = c(0,300), xlim = c(0,1))
+
+# Make phyloseq object of presence-absence in negative controls and true samples
+ps.pa <- transform_sample_counts(p.comb.filt.s.1500.80, function(abund) 1*(abund>0))
+ps.pa.neg <- prune_samples(sample_data(ps.pa)$TRUE_control == "control", ps.pa)
+ps.pa.pos <- prune_samples(sample_data(ps.pa)$TRUE_control == "TRUE", ps.pa)
+
+noncontaminant <- taxa_names(p.comb.filt.s.1500.80) %in% ids.perm
+noncontaminant <- as.character(noncontaminant)
+df.pa <- data.frame(pa.pos=taxa_sums(ps.pa.pos), pa.neg=taxa_sums(ps.pa.neg),
+                      noncontaminant=noncontaminant)
+ggplot(data=df.pa, aes(x=pa.neg, y=pa.pos, color=noncontaminant)) + geom_point() +
+  xlab("Prevalence (Negative Controls)") + ylab("Prevalence (True Samples)")
+
+### Decontam: perm-PERFect 10%
+physeq.controlD <-  prune_taxa(ids.perm, p.comb.filt.s.1500.80)
+noncontamdf.prev <- isNotContaminant(physeq.controlD, method = "prevalence", neg="is.neg",threshold=0.5,detailed = TRUE) # null-hypothesis: is contaminant / below threshold we reject null-hypothesis
+hist(noncontamdf.prev$p, 100, ylim = c(0,300), xlim = c(0,1))
+```
+
+## Perm_PERFect alpha 15% - order pval
+```{r}
+otu = as(otu_table(p.comb.filt.s.1500.80.true), "matrix")
+if(taxa_are_rows(p.comb.filt.s.1500.80.true)){otu <- t(otu)}
+otu = as_tibble(otu)
+res_sim <- PERFect_sim(X = otu,alpha = 0.15)
+dim(res_sim$filtX)
+ids.sim<- colnames(res_sim$filtX)
+#physeq.control <-  prune_taxa(ids.sim, p.comb.filt.s.1500.80.true)
+
+ord.pval <- pvals_Order(Counts = otu,res_sim = res_sim )
+
+otu = as(otu_table(p.comb.filt.s.1500.80.true), "matrix")
+if(taxa_are_rows(p.comb.filt.s.1500.80.true)){otu <- t(otu)}
+otu = as_tibble(otu)
+res_perm <- PERFect_perm(X = otu, Order.user = ord.pval,alpha = 0.15,algorithm = "full")
+dim(res_perm$filtX)
+ids.perm <- colnames(res_perm$filtX)
+
+pvals_Plots(PERFect = res_perm,X = otu,alpha = 0.15)
+
+hist(res_perm$pvals, 100, ylim = c(0,300), xlim = c(0,1))
+
+# Make phyloseq object of presence-absence in negative controls and true samples
+ps.pa <- transform_sample_counts(p.comb.filt.s.1500.80, function(abund) 1*(abund>0))
+ps.pa.neg <- prune_samples(sample_data(ps.pa)$TRUE_control == "control", ps.pa)
+ps.pa.pos <- prune_samples(sample_data(ps.pa)$TRUE_control == "TRUE", ps.pa)
+
+noncontaminant <- taxa_names(p.comb.filt.s.1500.80) %in% ids.perm
+noncontaminant <- as.character(noncontaminant)
+df.pa <- data.frame(pa.pos=taxa_sums(ps.pa.pos), pa.neg=taxa_sums(ps.pa.neg),
+                      noncontaminant=noncontaminant)
+ggplot(data=df.pa, aes(x=pa.neg, y=pa.pos, color=noncontaminant)) + geom_point() +
+  xlab("Prevalence (Negative Controls)") + ylab("Prevalence (True Samples)")
+
+### Decontam: perm-PERFect 15%
+physeq.controlE <-  prune_taxa(ids.perm, p.comb.filt.s.1500.80)
+noncontamdf.prev <- isNotContaminant(physeq.controlE, method = "prevalence", neg="is.neg",threshold=0.5,detailed = TRUE) # null-hypothesis: is contaminant / below threshold we reject null-hypothesis
+hist(noncontamdf.prev$p, 100, ylim = c(0,300), xlim = c(0,1))
+```
+
+## Perm_PERFect alpha 5% - order: NCw
+```{r}
+otu = as(otu_table(p.comb.filt.s.1500.80.true), "matrix")
+if(taxa_are_rows(p.comb.filt.s.1500.80.true)){otu <- t(otu)}
+otu = as_tibble(otu)
+res_sim <- PERFect_sim(X = otu, alpha = 0.15)
+dim(res_sim$filtX)
+ids.sim<- colnames(res_sim$filtX)
+#physeq.control <-  prune_taxa(ids.sim, p.comb.filt.s.1500.80.true)
+
+ord.pval <- NCw_Order(Counts = otu)
+
+otu = as(otu_table(p.comb.filt.s.1500.80.true), "matrix")
+if(taxa_are_rows(p.comb.filt.s.1500.80.true)){otu <- t(otu)}
+otu = as_tibble(otu)
+res_perm <- PERFect_perm(X = otu, Order.user = ord.pval,alpha = 0.15,algorithm = "full")
+dim(res_perm$filtX)
+ids.perm <- colnames(res_perm$filtX)
+
+pvals_Plots(PERFect = res_perm,X = otu,alpha = 0.15)
+
+hist(res_perm$pvals, 100, ylim = c(0,300), xlim = c(0,1))
+
+# Make phyloseq object of presence-absence in negative controls and true samples
+ps.pa <- transform_sample_counts(p.comb.filt.s.1500.80, function(abund) 1*(abund>0))
+ps.pa.neg <- prune_samples(sample_data(ps.pa)$TRUE_control == "control", ps.pa)
+ps.pa.pos <- prune_samples(sample_data(ps.pa)$TRUE_control == "TRUE", ps.pa)
+
+noncontaminant <- taxa_names(p.comb.filt.s.1500.80) %in% ids.perm
+noncontaminant <- as.character(noncontaminant)
+df.pa <- data.frame(pa.pos=taxa_sums(ps.pa.pos), pa.neg=taxa_sums(ps.pa.neg),
+                      noncontaminant=noncontaminant)
+ggplot(data=df.pa, aes(x=pa.neg, y=pa.pos, color=noncontaminant)) + geom_point() +
+  xlab("Prevalence (Negative Controls)") + ylab("Prevalence (True Samples)")
+
+### Decontam: perm-PERFect 15%
+physeq.controlF <-  prune_taxa(ids.perm, p.comb.filt.s.1500.80)
+noncontamdf.prev <- isNotContaminant(physeq.controlF, method = "prevalence", neg="is.neg",threshold=0.5,detailed = TRUE) # null-hypothesis: is contaminant / below threshold we reject null-hypothesis
+hist(noncontamdf.prev$p, 100, ylim = c(0,300), xlim = c(0,1))
+```
+
+
+

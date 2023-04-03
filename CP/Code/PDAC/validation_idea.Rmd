@@ -1,0 +1,50 @@
+---
+title: 'LibrarySize ~ n_taxa : correlation test'
+author: "Christoph Petrynowski"
+date: "2023-01-29"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+n_sample <- nsamples(p.true.filt.s.1500.80)
+df_libsize_ntaxa <- data.frame(x = rep(0,n_sample), y= rep(0,n_sample),row.names = sample_names(p.true.filt.s.1500.80))
+
+df_libsize_ntaxa[,1] <- sample_sums(p.true.filt.s.1500.80)
+for (i in seq(1:n_sample)) {
+  df_libsize_ntaxa[i,2] <- length(which(otu_table(p.true.filt.s.1500.80)[,i] > 0))
+}
+df_libsize_ntaxa <- df_libsize_ntaxa %>% arrange(y)
+ggplot(data = df_libsize_ntaxa, aes(x = x, y = y)) + geom_point()
+```
+
+```{r}
+rem <- prune_taxa(taxa = colnames(cor(otu)[c("358220","316"),which(cor(otu)["358220",] >0.5)]),x = p.true.filt.s.1500.80)
+plot(x = seq(1:nsamples(rem)),y = sample_sums(rem))
+```
+
+```{r}
+rem <- prune_taxa(taxa = colnames(cor(otu)[c("358220","316"),which(cor(otu)["358220",] >0.5)]),x = p.fin)
+plot(x = seq(1:nsamples(rem)),y = sample_sums(rem))
+```
+
+```{r}
+cor(otu)["358220",which(cor(otu)["358220",] >0.5)]
+colnames(cor(otu)[c("358220","316"),which(cor(otu)["358220",] >0.5)])
+tax_table(p.true.filt.s.1500.80)[colnames(cor(otu)[c("358220","316"),which(cor(otu)["358220",] >0.5)]),6:7]
+
+rem <- prune_taxa(taxa = colnames(cor(otu)[c("358220","316"),which(cor(otu)["358220",] >0.5)]),x = p.true.filt.s.1500.80)
+plot(x = seq(1:nsamples(rem)),y = sample_sums(rem))
+
+rem <- prune_taxa(taxa = colnames(cor(otu)[c("358220","316"),which(cor(otu)["358220",] >0.5)]),x = p.fin)
+plot(x = seq(1:nsamples(rem)),y = sample_sums(rem))
+
+colnames(cor(otu)[c("358220","316"),which(cor(otu)["358220",] >0.5)]) %in% taxa_names(p.fin)
+colnames(cor(otu)[c("358220","316"),which(cor(otu)["358220",] >0.5)])[colnames(cor(otu)[c("358220","316"),which(cor(otu)["358220",] >0.5)]) %in% taxa_names(p.fin)]
+tax_table(p.true.filt.s.1500.80)[colnames(cor(otu)[c("358220","316"),which(cor(otu)["358220",] >0.5)])[colnames(cor(otu)[c("358220","316"),which(cor(otu)["358220",] >0.5)]) %in% taxa_names(p.fin)],6:7]
+sort(sample_sums(rem) / sample_sums(p.fin))
+```
+

@@ -1,0 +1,702 @@
+---
+title: "Filtering Pipeline"
+author: "Christoph Petrynowski"
+date: "2023-02-05"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+```
+
+# Software-Library
+
+```{r library, echo=FALSE}
+library(PERFect)
+library(phyloseq)
+library(decontam)
+library(tidyverse)
+library(pairwiseAdonis)
+library(kableExtra)
+library(vegan)
+library(tidytree)
+library(ape)
+library(ggrepel)
+library(microbiome)
+library(ggpubr) # for manual p-value assigning
+library(rstatix) # for wilcox test
+library(yingtools2)
+#if( !require(ggtree) ){
+#  install.packages(ggtree)
+#}
+library(readxl) # load excel data
+if( !require(rlist) ){
+  install.packages(rlist)
+}
+library(rlist) # work with lists
+if( !require(ggsignif) ){
+  install.packages(ggsignif)
+}
+library(ggsignif) # plot p.values on a ggplot
+set.seed(3)
+library(plyr) #for ldply - performs function on every element in list & combines the output into a dataframe
+library(reshape2) # for melting data
+if( !require(doParallel) ){
+  install.packages("doParallel")
+}
+library(doParallel) # ConQuR´s GitHub recomends this step
+#devtools::install_github("wdl2459/ConQuR")
+library(ConQuR)
+if( !require("VennDiagram") ){
+  install.packages("VennDiagram")
+}
+library("VennDiagram")
+if( !require("ggvenn") ){
+  install.packages("ggvenn")
+}
+library("ggvenn")
+library(RColorBrewer) 
+```
+
+```{r}
+## adding functions
+source("../CP/MyFunctionsV2.R")
+source("../CP/MyAnalysisWithPlots.R")
+```
+
+# Raw Phyloseq 1500.80s
+### Loading phyloseq "1500.80s true samples" objects
+```{r loading phyloseq "1500.80s true samples" objects}
+physeq1.1500.80 <- readRDS("../raw_data/PhyloSeqObj/2022_05_27_patho_FFPE_tum_panc_1/physeq_original_1500.80.rds")
+physeq2.1500.80 <- readRDS("../raw_data/PhyloSeqObj/2022_05_27_patho_FFPE_tum_panc_2/physeq_original_1500.80.rds")
+physeq3.1500.80 <- readRDS("../raw_data/PhyloSeqObj/2022_05_28_patho_FFPE_tum_panc_3/physeq_original_1500.80.rds")
+physeq4.1500.80 <- readRDS("../raw_data/PhyloSeqObj/2022_05_28_patho_FFPE_tum_panc_4/physeq_original_1500.80.rds")
+physeq5.1500.80 <- readRDS("../raw_data/PhyloSeqObj/2021_12_01_patho_FFPE_self_tumor/physeq_original_1500.80.rds")
+
+#physeq6.1500.80 <- readRDS("raw_data/PhyloSeqObj/2022_08_09_patho_FFPE_tum_panc_rep1/physeq_original_1500.80.rds") #09.08.22: rep1: 10 samples (tumor+normal panc mixed)
+#physeq7.1500.80 <- readRDS("raw_data/PhyloSeqObj/2022_08_09_patho_FFPE_tum_panc_rep2/physeq_original_1500.80.rds") #09.08.22: rep2: 10 samples (tumor+normal panc mixed)
+p.true.original.1500.80 <- merge_phyloseq(physeq1.1500.80,physeq2.1500.80,physeq3.1500.80,physeq4.1500.80,physeq5.1500.80)#merge the different phyloseq objects into 1 phyloseq object
+# sample_data of new phyloseq-object
+
+p.true.filt.1500.80 <- subset_taxa(p.true.original.1500.80, superkingdom=="Bacteria")
+p.true.filt.s.1500.80 <- tax_glom(p.true.filt.1500.80, taxrank = "species", NArm = TRUE)
+rm(list = c("physeq1.1500.80", "physeq2.1500.80", "physeq3.1500.80", "physeq4.1500.80", "physeq5.1500.80"))
+rm(p.true.filt.1500.80)
+```
+
+### Loading phyloseq "1500.80s ntc samples" objects
+```{r loading phyloseq "1500.80s ntc samples" objects}
+#loading 1500.80s ntc samples
+physeq.nct1.1500.80 <- readRDS("../raw_data/PhyloSeqObj/2022_06_02_patho_FFPE_tum_panc_ntc_1/physeq_original_1500.80.rds")
+physeq.nct2.1500.80 <- readRDS("../raw_data/PhyloSeqObj/2022_06_02_patho_FFPE_tum_panc_ntc_2/physeq_original_1500.80.rds")
+physeq.nct3.1500.80 <- readRDS("../raw_data/PhyloSeqObj/2022_06_03_patho_FFPE_tum_panc_ntc_3/physeq_original_1500.80.rds")
+physeq.nct4.1500.80 <- readRDS("../raw_data/PhyloSeqObj/2022_06_03_patho_FFPE_tum_panc_ntc_4/physeq_original_1500.80.rds")
+physeq.nct5.1500.80 <- readRDS("../raw_data/PhyloSeqObj/2022_06_04_patho_FFPE_tum_panc_ntc_5/physeq_original_1500.80.rds")
+physeq.nct6.1500.80 <- readRDS("../raw_data/PhyloSeqObj/2022_06_04_patho_FFPE_tum_panc_ntc_6/physeq_original_1500.80.rds")
+physeq.nct7.1500.80 <- readRDS("../raw_data/PhyloSeqObj/2022_06_10_patho_FFPE_tum_panc_ntc_7/physeq_original_1500.80.rds")
+physeq.nct8.1500.80 <- readRDS("../raw_data/PhyloSeqObj/2022_07_13_patho_FFPE_tum_panc_ntc_8/physeq_original_1500.80.rds")
+physeq.nct9.1500.80 <- readRDS("../raw_data/PhyloSeqObj/2022_07_13_patho_FFPE_tum_panc_ntc_9/physeq_original_1500.80.rds")
+physeq.nct10.1500.80 <- readRDS("../raw_data/PhyloSeqObj/2021_12_02_patho_FFPE_self_ntc/physeq_original_1500.80.rds")
+physeq.nct11.1500.80 <- readRDS("../raw_data/PhyloSeqObj/2022_01_24_patho_FFPE_self_ntc_2/physeq_original_1500.80.rds")
+
+physeq.nct.original.1500.80 <- merge_phyloseq(physeq.nct1.1500.80, physeq.nct2.1500.80, physeq.nct3.1500.80, physeq.nct4.1500.80, physeq.nct5.1500.80, physeq.nct6.1500.80, physeq.nct7.1500.80, physeq.nct8.1500.80, physeq.nct9.1500.80,physeq.nct10.1500.80, physeq.nct11.1500.80)
+
+physeq.filt.nct.1500.80 <- subset_taxa(physeq.nct.original.1500.80, superkingdom=="Bacteria")
+physeq.filt.nct.s.1500.80 <- tax_glom(physeq.filt.nct.1500.80, taxrank = "species", NArm = TRUE)
+
+rm(list = c('physeq.nct1.1500.80', 'physeq.nct2.1500.80', 'physeq.nct3.1500.80', 'physeq.nct4.1500.80', 'physeq.nct5.1500.80',
+            'physeq.nct6.1500.80', 'physeq.nct7.1500.80', 'physeq.nct8.1500.80', 'physeq.nct9.1500.80', 'physeq.nct10.1500.80', 'physeq.nct11.1500.80'))
+rm(physeq.filt.nct.1500.80)
+
+#replace sample_side "paraffin" with "paraffin_tumor"
+sample_data(physeq.filt.nct.s.1500.80)$sample_side <- ifelse(sample_data(physeq.filt.nct.s.1500.80)$sample_side == "paraffin", "paraffin_tumor", sample_data(physeq.filt.nct.s.1500.80)$sample_side)
+```
+
+Before using NCTs for decontamination, we firstly need to remove samples from NCTs whose read counts are low.
+
+Overview of read counts in samples in NCTs
+
+```{r}
+visualize_samples_low_reads(physeq.filt.nct.s.1500.80)
+```
+
+We decide to remove NCT samples if their read counts are less than 150
+
+```{r}
+#physeq.filt.nct.s.1500.80 <- filter_samples_low_reads(PhyObj = physeq.filt.nct.s.1500.80,threshold = 150)
+bac.count.ntc <- tibble(bac.count = sample_sums(physeq.filt.nct.s.1500.80), 
+                          sample = sample_data(physeq.filt.nct.s.1500.80)$id)
+id.ex <- bac.count.ntc %>% filter(bac.count < 150) %>% pull (sample)
+physeq.read.filt <- subset_samples(physeq.filt.nct.s.1500.80, !(id %in% id.ex))
+physeq.read.filt <- prune_taxa(taxa_sums(physeq.read.filt)>0, physeq.read.filt)
+physeq.filt.nct.s.1500.80 <- physeq.read.filt
+rm(bac.count.ntc)
+rm(id.ex)
+rm(physeq.read.filt)
+```
+
+Now, in NTC samples, we have *`r nrow(sample_data(physeq.filt.nct.s.1500.80))`* samples and *`r nrow(otu_table(physeq.filt.nct.s.1500.80))`* taxa.
+
+#OTU unification
+
+We have 2 phyloseq objects that may describe the same species using different OTU handles. We therefore unify the OTU handles for an easier downstream analysis.
+
+### Merge TRUE/NCT samples
+```{r merge true/nct samples}
+p.comb.filt.s.1500.80 <- merge_phyloseq(p.true.filt.s.1500.80,physeq.filt.nct.s.1500.80) # merge the phyloseq objects containing true samples (p.true.filt.s.1500.80) and nct samples (physeq.filt.nct.s.1500.80)
+p.comb.filt.s.1500.80 <- tax_glom(p.comb.filt.s.1500.80,taxrank = "species", NArm = TRUE) # agglomerate taxa to species level. This combines different OTUs {hypothecially: 450 / 453} assigned to the same species into just 1 OTU
+sample_data(p.comb.filt.s.1500.80)$is.neg <- sample_data(p.comb.filt.s.1500.80)$TRUE_control == "control"#first identify your negative controls -> decontam!
+
+p.comb.filt.s.1500.80 <- subset_samples(p.comb.filt.s.1500.80, uniqueID != 326 & uniqueID != 327 & uniqueID != 328 & uniqueID != 329 & uniqueID != 330 & uniqueID != 331 & uniqueID !=332 & uniqueID !=333 & uniqueID !=334 & uniqueID !=335 & uniqueID !=338 & uniqueID !=339 & uniqueID !=340 & uniqueID !=341)
+```
+
+
+## DEMERGE!
+```{r}
+p.true.filt.s.1500.80.unify <- subset_samples(p.comb.filt.s.1500.80,TRUE_control=="TRUE") #only true samples
+p.true.filt.s.1500.80.unify <- prune_taxa(x = p.true.filt.s.1500.80.unify,taxa = taxa_names(p.true.filt.s.1500.80.unify)[-(which(taxa_sums(p.true.filt.s.1500.80.unify)==0))]) #only taxa found in true samples
+
+physeq.filt.nct.s.1500.80.unify <- subset_samples(p.comb.filt.s.1500.80,TRUE_control == "control") #only NCT samples
+physeq.filt.nct.s.1500.80.unify <- prune_taxa(x = physeq.filt.nct.s.1500.80.unify,taxa = taxa_names(physeq.filt.nct.s.1500.80.unify)[-(which(taxa_sums(physeq.filt.nct.s.1500.80.unify)==0))]) #only taxa found in NCT samples
+```
+
+### Low abundance filtering (Step 3)
+
+In this step, we remove all taxas in true samples whose abundance are low (eg. \<10\^-4) in atleast 1 sample
+```{r}
+p.true.RmLowAbun.man <- filter_by_low_abundance(phyloseqObj = p.true.filt.s.1500.80.unify,threshold =0.0001 ,A = 1)
+```
+
+First of all, let us check the taxa overlap between NCT samples and true sample after low-abundance filtering by rule of thumb.
+
+```{r}
+PlotVenn2Sets(taxa_names(p.true.RmLowAbun.man) %>% unique(),
+              taxa_names(physeq.filt.nct.s.1500.80.unify) %>% unique(),
+              "True Samples" , "NCT Samples ")
+```
+
+There are `r setdiff(taxa_names(physeq.filt.nct.s.1500.80.unify), taxa_names(p.true.RmLowAbun.man)) %>% length()` taxa belong to NCT samples but not in true samples (after rule of thumb). They are obvious contamination.
+
+Instead of Decontam R package, we follow procedure of Nejman et al..
+
+# Nejman
+
+#### High prevalence taxas in NCTs
+
+We consider all taxas whose prevalence in NCTs are higher than a certain threshold (eg. 30%) are contaminants.
+
+In order to determine that threshold, we have a look at the plot below
+
+```{r}
+xout <- HighPrevalence_Data(p.true.RmLowAbun.man, physeq.filt.nct.s.1500.80.unify)
+plot(xout$factorx, xout$rel_tax, xlab="prevalence in NCT samples", ylab="proportion of tax in true samples")
+```
+
+This plot shows us how many percents of taxa we would remove from true samples (y-axis) if we pick up a threshold for high prevalence in NCT samples (x-axis).
+
+From this plot, a threshold 0.3 would be fine.
+Taking a filter of 0.307 yields a loss of 12 taxa or roughly 1.94%
+
+```{r}
+filter <- 0.339
+filtered_taxa1 <- tibble(
+  Cont = genefilter_sample(physeq.filt.nct.s.1500.80.unify, filterfun_sample(function(x) x > 0), A=filter*nsamples(physeq.filt.nct.s.1500.80.unify)),
+  OTU = names(genefilter_sample(physeq.filt.nct.s.1500.80.unify, filterfun_sample(function(x) x > 0), A=filter*nsamples(physeq.filt.nct.s.1500.80.unify)))
+) %>% 
+  arrange (-Cont)
+cont.count <- filtered_taxa1 %>% count("Cont") 
+cont.count %>% 
+  kable (caption=paste("Count of contaminants (filter", filter*100, " %)"), booktabs =TRUE) %>%
+  kable_classic(full_width = F, html_font = "Cambria") %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive")) 
+```
+
+The list of contaminants determined by high prevalence in NCTs (threhold 0.3)
+
+```{r}
+df.fam.melt <- psmelt(physeq.filt.nct.s.1500.80.unify)
+df.fam.melt %>% select(OTU, species) %>% 
+  unique %>% 
+  right_join(filtered_taxa1) %>% 
+  filter(Cont == TRUE) %>% 
+  select(-Cont) %>% 
+  kable (caption=paste("Contaminants (filter", filter*100, " %)"), booktabs =TRUE) %>%
+  kable_classic(full_width = F, html_font = "Cambria") %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive")) %>% 
+  scroll_box(width = "70%", height = "600px")
+```
+
+We now remove those taxa which have high prevalence in NTC samples out of true samples
+
+```{r}
+p.true.RmLowAbun.RmHighPrev.man <- prune_taxa(setdiff(taxa_names(p.true.RmLowAbun.man),filtered_taxa1[filtered_taxa1$Cont==TRUE,] %>% pull("OTU")), p.true.RmLowAbun.man)
+```
+
+Now we have *`r nrow(sample_data(p.true.RmLowAbun.RmHighPrev.man))`* true samples and *`r nrow(otu_table(p.true.RmLowAbun.RmHighPrev.man))`* taxa. In NCTs, we have *`r nrow(sample_data(physeq.filt.nct.s.1500.80.unify))`* control samples and *`r nrow(otu_table(physeq.filt.nct.s.1500.80.unify))`* taxa.
+
+The Venn diagram of taxa between true samples and NCTs is now
+
+```{r}
+PlotVenn2Sets(rownames(otu_table(p.true.RmLowAbun.RmHighPrev.man)), rownames(otu_table(physeq.filt.nct.s.1500.80.unify)), "True samples", "NCT sample")
+```
+
+-- Now Nejman via written code, not function --
+
+```{r}
+p.comb.filt.s.1500.80.r <- merge_phyloseq(p.true.RmLowAbun.RmHighPrev.man,physeq.filt.nct.s.1500.80.unify) # merge the phyloseq objects containing true samples (p.true.filt.s.1500.80) and nct samples (physeq.filt.nct.s.1500.80.unify)
+p.comb.filt.s.1500.80.r <- tax_glom(p.comb.filt.s.1500.80.r,taxrank = "species", NArm = TRUE) # agglomerate taxa to species level. This combines different OTUs {hypothecially: 450 / 453} assigned to the same species into just 1 OTU {this progess accounts for }
+```
+#### Loading Batch metadata
+```{r introduce Batch metadata}
+df <- read_excel("../raw_data/Metadata.xlsx", 
+    col_types = c("numeric", "text", "text", 
+        "text", "text", "text", "text", "text", 
+        "text", "numeric", "text", "numeric", 
+        "numeric", "text", "text")) #load metadata excel-sheet containing DNA extraction batch information & PCR batch infromation
+df <- as.data.frame(df)
+
+sd.new <- meta(p.comb.filt.s.1500.80.r) %>% arrange(uniqueID)
+df <- df %>% arrange(uniqueID)
+df <- df[df$uniqueID %in% sd.new$uniqueID,]
+
+sd.new$DNAex_round <- df$DNAex_round
+sd.new$PCR_round <- df$PCR_round
+
+rownames(sd.new) <- sd.new$id
+
+# the above code arranges sampledata of merged phyloseq-object by uniqueID & the metadata excel-sheet by uniqueID. This guarantees the ordering of the rows for both objects is the same. It follows that we can now create the columns "DNAex_round" & "PCR_round" in sd.new using our df. As sample_data from phyloseq-objects have rownames equivalent to the names of their samples we define the rownames of sd.new using the $id colums
+
+p.comb.filt.s.1500.80.r <- merge_phyloseq(otu_table(p.comb.filt.s.1500.80.r), tax_table(p.comb.filt.s.1500.80.r), sample_data(sd.new)) #we merge the otu_table and tax_table of our old phyloseq-object and the newly created sample_data - now containing the DNA extraction batch information and PCR batch information
+sample_data(p.comb.filt.s.1500.80.r)$is.neg <- sample_data(p.comb.filt.s.1500.80.r)$TRUE_control == "control"#first identify your negative controls -> decontam!
+```
+
+```{r}
+#p.comb.filt.s.1500.80.true <- subset_samples(p.comb.filt.s.1500.80.r,TRUE_control=="TRUE") #only true samples
+#p.comb.filt.s.1500.80.true <- prune_taxa(x = p.comb.filt.s.1500.80.true,taxa = taxa_names(p.comb.filt.s.1500.80.true)[-(which(taxa_sums(p.comb.filt.s.1500.80.true)==0))]) #only taxa found in true samples
+
+#p.comb.filt.s.1500.80.nct <- subset_samples(p.comb.filt.s.1500.80.r,TRUE_control == "control") #only NCT samples
+#p.comb.filt.s.1500.80.nct <- prune_taxa(x = p.comb.filt.s.1500.80.nct,taxa = taxa_names(p.comb.filt.s.1500.80.nct)[-(which(taxa_sums(p.comb.filt.s.1500.80.nct)==0))]) #only taxa found in NCT samples
+```
+
+### Binomial exact test
+```{r}
+p.comb <- p.comb.filt.s.1500.80.r
+
+IDs <- unique(meta(p.comb)$DNAex_round)
+df.condition1.meta <- as.data.frame(matrix(0,nrow = 8,ncol = length(IDs)),row.names = c("n_true_samples","n_nct_samples","n_paraffin_tumor_nct_samples","n_paraffin_normal_nct_samples","n_paraffin_nct_samples","n_buffer_nct_samples","n_pcr_nct_samples","batch_name"))
+vec0 <- rep(0,length(IDs))
+for (i in seq(1,length(IDs))) {
+  vec0[i] <- paste0("DNAex","b",i)
+}
+colnames(df.condition1.meta) <- vec0
+for (i in seq(1,length(IDs))) {
+  b <- subset_samples(p.comb, DNAex_round == IDs[i])
+  b <- prune_taxa(taxa = (taxa_names(b)[-which(taxa_sums(b) == 0)]),x = b) #this removes taxa with taxa_sums == 0 from the overall batch
+  check1 <- length(which(meta(b)$TRUE_control == "TRUE")) #checks whether the batch contains true_samples
+  check2 <- length(which(meta(b)$TRUE_control == "control")) #checks whether the batch contains nct_sample
+  check3 <- length(which(meta(b)$sample_side == "buffer")) #checks whether the batch contains buffer_nct_samples
+  check4 <- length(which(meta(b)$sample_side == "PCR_ctrl_H2O")) #checks whether the batch contains pcrH2O_nct_samples
+  check5 <- length(which(meta(b)$sample_side == "paraffin_normal")) #checks whether the batch contains paraffinnormal_nct_samples
+  check6 <- length(which(meta(b)$sample_side == "paraffin_tumor")) #checks whether the batch contains paraffintumor_nct_samples
+  df.condition1.meta[1,i] <- check1
+  df.condition1.meta[2,i] <- check2
+  df.condition1.meta[3,i] <- check6
+  df.condition1.meta[4,i] <- check5
+  df.condition1.meta[5,i] <- (check5+check6)
+  df.condition1.meta[6,i] <- check3
+  df.condition1.meta[7,i] <- check4
+  df.condition1.meta[8,i] <- IDs[i]
+  if (check1 == 0) {
+    print(paste0("check1 :",IDs[i]))
+    next}
+  if (check2 == 0) {
+    print(paste0("check2 :",IDs[i]))
+    next}
+  if (check3 != 0) {
+    #perform test
+    b.true <- subset_samples(b,TRUE_control == "TRUE") #subset of true samples in batch
+    b.condition <- subset_samples(b,sample_side == "buffer") #subset of batch_nct_samples in batch
+    b.sub <- merge_phyloseq(b.true,b.condition) # we take the subsets we want, merge them to allow for thorough removal of bacteria
+    if (length(which(taxa_sums(b.sub) == 0)) != 0) {
+    b.sub <- prune_taxa(taxa = (taxa_names(b.sub)[-which(taxa_sums(b.sub) == 0)]),x = b.sub) #this removes taxa with taxa_sums == 0 from our batch subset
+    }
+    b.true <- subset_samples(b.sub,TRUE_control == "TRUE") #create new subset of true samples in batch
+    b.condition <- subset_samples(b.sub,sample_side == "buffer") #create new subset of batch_nct_samples in batch  
+    # Im honest: this is a bit redundant
+    df.filt <- data.frame(x = prevalence(b.true, detection = 0, count = TRUE),
+                        n = nsamples(b.true),
+                        p = prevalence(b.condition, detection = 0, count = FALSE)) #df stores x,n,p for binom.test
+    vec <- seq(1,nrow(df.filt))
+    for (j in vec) {
+    vec[j] <- binom.test(x = df.filt[j,"x"], n = df.filt[j,"n"], p = df.filt[j,"p"],alternative = "greater")$p.value
+    }
+    y <- paste0("df.filt1-buffer-",IDs[i])
+    assign(y,df.filt)
+    df.p <- data.frame(id = rownames(df.filt),
+                       pvalue = vec)
+    x <- paste0("df.p1-buffer-",IDs[i])
+    assign(x,df.p)
+  }
+  if (check4 != 0) {
+    #for DNAex this is mostly irrelevant as PCR_ctrl_H2O has DNAex_round: NA
+    #perform test
+    b.true <- subset_samples(b,TRUE_control == "TRUE") #subset of true samples in batch
+    b.condition <- subset_samples(b,sample_side == "PCR_ctrl_H2O") #subset of batch_nct_samples in batch
+    b.sub <- merge_phyloseq(b.true,b.condition) # we take the subsets we want, merge them to allow for thorough removal of bacteria
+    if (length(which(taxa_sums(b.sub) == 0)) != 0) {
+    b.sub <- prune_taxa(taxa = (taxa_names(b.sub)[-which(taxa_sums(b.sub) == 0)]),x = b.sub) #this removes taxa with taxa_sums == 0 from our batch subset
+    }
+    b.true <- subset_samples(b.sub,TRUE_control == "TRUE") #create new subset of true samples in batch
+    b.condition <- subset_samples(b.sub,sample_side == "PCR_ctrl_H2O") #create new subset of batch_nct_samples in batch  
+    # Im honest: this is a bit redundant
+    df.filt <- data.frame(x = prevalence(b.true, detection = 0, count = TRUE),
+                        n = nsamples(b.true),
+                        p = prevalence(b.condition, detection = 0, count = FALSE)) #df stores x,n,p for binom.test
+    vec <- seq(1,nrow(df.filt))
+    for (j in vec) {
+    vec[j] <- binom.test(x = df.filt[j,"x"], n = df.filt[j,"n"], p = df.filt[j,"p"],alternative = "greater")$p.value
+    }
+    y <- paste0("df.filt1-PCR_ctrl_H2O-",IDs[i])
+    assign(y,df.filt)
+    df.p <- data.frame(id = rownames(df.filt),
+                       pvalue = vec)
+    x <- paste0("df.p1-PCR_ctrl_H2O-",IDs[i])
+    assign(x,df.p)
+  }
+  n_paraffin <- (check5+check6)
+  if (n_paraffin != 0) {
+    #perform test
+    b.true <- subset_samples(b,TRUE_control == "TRUE") #subset of true samples in batch
+    b.condition <- subset_samples(b,sample_side == "paraffin_tumor" |  sample_side == "paraffin_normal") #subset of batch_nct_samples in batch
+    b.sub <- merge_phyloseq(b.true,b.condition) # we take the subsets we want, merge them to allow for thorough removal of bacteria
+    if (length(which(taxa_sums(b.sub) == 0)) != 0) {
+    b.sub <- prune_taxa(taxa = (taxa_names(b.sub)[-which(taxa_sums(b.sub) == 0)]),x = b.sub) #this removes taxa with taxa_sums == 0 from our batch subset
+    }
+    b.true <- subset_samples(b.sub,TRUE_control == "TRUE") #create new subset of true samples in batch
+    b.condition <- subset_samples(b.sub,sample_side == "paraffin_tumor" |  sample_side == "paraffin_normal") #create new subset of batch_nct_samples in batch  
+    # Im honest: this is a bit redundant
+    df.filt <- data.frame(x = prevalence(b.true, detection = 0, count = TRUE),
+                        n = nsamples(b.true),
+                        p = prevalence(b.condition, detection = 0, count = FALSE)) #df stores x,n,p for binom.test
+    vec <- seq(1,nrow(df.filt))
+    for (j in vec) {
+    vec[j] <- binom.test(x = df.filt[j,"x"], n = df.filt[j,"n"], p = df.filt[j,"p"],alternative = "greater")$p.value
+    }
+    y <- paste0("df.filt1-paraffin-",IDs[i])
+    assign(y,df.filt)
+    df.p <- data.frame(id = rownames(df.filt),
+                       pvalue = vec)
+    x <- paste0("df.p1-paraffin-",IDs[i])
+    assign(x,df.p)
+  }
+}
+
+IDs <- unique(meta(p.comb)$PCR_round)
+df.condition2.meta <- as.data.frame(matrix(0,nrow = 8,ncol = length(IDs)),row.names = c("n_true_samples","n_nct_samples","n_paraffin_tumor_nct_samples","n_paraffin_normal_nct_samples","n_paraffin_nct_samples","n_buffer_nct_samples","n_pcr_nct_samples","batch_name"))
+vec0 <- rep(0,length(IDs))
+for (i in seq(1,length(IDs))) {
+  vec0[i] <- paste0("PCR","b",i)
+}
+colnames(df.condition2.meta) <- vec0
+for (i in seq(1,length(IDs))) {
+  b <- subset_samples(p.comb, PCR_round == IDs[i])
+  b <- prune_taxa(taxa = (taxa_names(b)[-which(taxa_sums(b) == 0)]),x = b) #this removes taxa with taxa_sums == 0 from the overall batch
+  check1 <- length(which(meta(b)$TRUE_control == "TRUE")) #checks whether the batch contains true_samples
+  check2 <- length(which(meta(b)$TRUE_control == "control")) #checks whether the batch contains nct_sample
+  check3 <- length(which(meta(b)$sample_side == "buffer")) #checks whether the batch contains buffer_nct_samples
+  check4 <- length(which(meta(b)$sample_side == "PCR_ctrl_H2O")) #checks whether the batch contains pcrH2O_nct_samples
+  check5 <- length(which(meta(b)$sample_side == "paraffin_normal")) #checks whether the batch contains paraffinnormal_nct_samples
+  check6 <- length(which(meta(b)$sample_side == "paraffin_tumor")) #checks whether the batch contains paraffintumor_nct_samples
+  df.condition2.meta[1,i] <- check1
+  df.condition2.meta[2,i] <- check2
+  df.condition2.meta[3,i] <- check6
+  df.condition2.meta[4,i] <- check5
+  df.condition2.meta[5,i] <- (check5+check6)
+  df.condition2.meta[6,i] <- check3
+  df.condition2.meta[7,i] <- check4
+  df.condition2.meta[8,i] <- IDs[i]
+  if (check1 == 0) {
+    print(paste0("check1 :",IDs[i]))
+    next}
+  if (check2 == 0) {
+    print(paste0("check2 :",IDs[i]))
+    next}
+  if (check3 != 0) {
+    #perform test
+    b.true <- subset_samples(b,TRUE_control == "TRUE") #subset of true samples in batch
+    b.condition <- subset_samples(b,sample_side == "buffer") #subset of batch_nct_samples in batch
+    b.sub <- merge_phyloseq(b.true,b.condition) # we take the subsets we want, merge them to allow for thorough removal of bacteria
+    if (length(which(taxa_sums(b.sub) == 0)) != 0) {
+    b.sub <- prune_taxa(taxa = (taxa_names(b.sub)[-which(taxa_sums(b.sub) == 0)]),x = b.sub) #this removes taxa with taxa_sums == 0 from our batch subset
+    }
+    b.true <- subset_samples(b.sub,TRUE_control == "TRUE") #create new subset of true samples in batch
+    b.condition <- subset_samples(b.sub,sample_side == "buffer") #create new subset of batch_nct_samples in batch  
+    # Im honest: this is a bit redundant
+    df.filt <- data.frame(x = prevalence(b.true, detection = 0, count = TRUE),
+                        n = nsamples(b.true),
+                        p = prevalence(b.condition, detection = 0, count = FALSE)) #df stores x,n,p for binom.test
+    vec <- seq(1,nrow(df.filt))
+    for (j in vec) {
+    vec[j] <- binom.test(x = df.filt[j,"x"], n = df.filt[j,"n"], p = df.filt[j,"p"],alternative = "greater")$p.value
+    }
+    y <- paste0("df.filt2-buffer-",IDs[i])
+    assign(y,df.filt)
+    df.p <- data.frame(id = rownames(df.filt),
+                       pvalue = vec)
+    x <- paste0("df.p2-buffer-",IDs[i])
+    assign(x,df.p)
+  }
+  if (check4 != 0) {
+    #for DNAex this is mostly irrelevant as PCR_ctrl_H2O has DNAex_round: NA
+    #perform test
+    b.true <- subset_samples(b,TRUE_control == "TRUE") #subset of true samples in batch
+    b.condition <- subset_samples(b,sample_side == "PCR_ctrl_H2O") #subset of batch_nct_samples in batch
+    b.sub <- merge_phyloseq(b.true,b.condition) # we take the subsets we want, merge them to allow for thorough removal of bacteria
+    if (length(which(taxa_sums(b.sub) == 0)) != 0) {
+    b.sub <- prune_taxa(taxa = (taxa_names(b.sub)[-which(taxa_sums(b.sub) == 0)]),x = b.sub) #this removes taxa with taxa_sums == 0 from our batch subset
+    }
+    b.true <- subset_samples(b.sub,TRUE_control == "TRUE") #create new subset of true samples in batch
+    b.condition <- subset_samples(b.sub,sample_side == "PCR_ctrl_H2O") #create new subset of batch_nct_samples in batch  
+    # Im honest: this is a bit redundant
+    df.filt <- data.frame(x = prevalence(b.true, detection = 0, count = TRUE),
+                        n = nsamples(b.true),
+                        p = prevalence(b.condition, detection = 0, count = FALSE)) #df stores x,n,p for binom.test
+    vec <- seq(1,nrow(df.filt))
+    for (j in vec) {
+    vec[j] <- binom.test(x = df.filt[j,"x"], n = df.filt[j,"n"], p = df.filt[j,"p"],alternative = "greater")$p.value
+    }
+    y <- paste0("df.filt2-PCR_ctrl_H2O-",IDs[i])
+    assign(y,df.filt)
+    df.p <- data.frame(id = rownames(df.filt),
+                       pvalue = vec)
+    x <- paste0("df.p2-PCR_ctrl_H2O-",IDs[i])
+    assign(x,df.p)
+  }
+  n_paraffin <- (check5+check6)
+  if (n_paraffin != 0) {
+    #perform test
+    b.true <- subset_samples(b,TRUE_control == "TRUE") #subset of true samples in batch
+    b.condition <- subset_samples(b,sample_side == "paraffin_tumor" |  sample_side == "paraffin_normal") #subset of batch_nct_samples in batch
+    b.sub <- merge_phyloseq(b.true,b.condition) # we take the subsets we want, merge them to allow for thorough removal of bacteria
+    if (length(which(taxa_sums(b.sub) == 0)) != 0) {
+    b.sub <- prune_taxa(taxa = (taxa_names(b.sub)[-which(taxa_sums(b.sub) == 0)]),x = b.sub) #this removes taxa with taxa_sums == 0 from our batch subset
+    }
+    b.true <- subset_samples(b.sub,TRUE_control == "TRUE") #create new subset of true samples in batch
+    b.condition <- subset_samples(b.sub,sample_side == "paraffin_tumor" |  sample_side == "paraffin_normal") #create new subset of batch_nct_samples in batch  
+    # Im honest: this is a bit redundant
+    df.filt <- data.frame(x = prevalence(b.true, detection = 0, count = TRUE),
+                        n = nsamples(b.true),
+                        p = prevalence(b.condition, detection = 0, count = FALSE)) #df stores x,n,p for binom.test
+    vec <- seq(1,nrow(df.filt))
+    for (j in vec) {
+    vec[j] <- binom.test(x = df.filt[j,"x"], n = df.filt[j,"n"], p = df.filt[j,"p"],alternative = "greater")$p.value
+    }
+    y <- paste0("df.filt2-paraffin-",IDs[i])
+    assign(y,df.filt)
+    df.p <- data.frame(id = rownames(df.filt),
+                       pvalue = vec)
+    x <- paste0("df.p2-paraffin-",IDs[i])
+    assign(x,df.p)
+  }
+}
+
+bad_taxa <- list()
+#bad_taxa <- list.append(bad_taxa,`df.p1-buffer-1`[which(x = `df.p1-buffer-1`$pvalue >= 0.05),1])
+# bad_taxa <- list.append(bad_taxa,`df.p1-buffer-2`[which(x = `df.p1-buffer-2`$pvalue >= 0.05),1])
+# bad_taxa <- list.append(bad_taxa,`df.p1-buffer-3`[which(x = `df.p1-buffer-3`$pvalue >= 0.05),1])
+# bad_taxa <- list.append(bad_taxa,`df.p1-buffer-4`[which(x = `df.p1-buffer-4`$pvalue >= 0.05),1])
+# bad_taxa <- list.append(bad_taxa,`df.p1-buffer-5`[which(x = `df.p1-buffer-5`$pvalue >= 0.05),1])
+#bad_taxa <- list.append(bad_taxa,`df.p1-buffer-6`[which(x = `df.p1-buffer-6`$pvalue >= 0.05),1])
+bad_taxa <- list.append(bad_taxa,`df.p1-paraffin-1`[which(x = `df.p1-paraffin-1`$pvalue >= 0.05),1])
+bad_taxa <- list.append(bad_taxa,`df.p1-paraffin-2`[which(x = `df.p1-paraffin-2`$pvalue >= 0.05),1])
+bad_taxa <- list.append(bad_taxa,`df.p1-paraffin-3`[which(x = `df.p1-paraffin-3`$pvalue >= 0.05),1])
+bad_taxa <- list.append(bad_taxa,`df.p1-paraffin-4`[which(x = `df.p1-paraffin-4`$pvalue >= 0.05),1])
+bad_taxa <- list.append(bad_taxa,`df.p1-paraffin-5`[which(x = `df.p1-paraffin-5`$pvalue >= 0.05),1])
+#bad_taxa <- list.append(bad_taxa,`df.p1-paraffin-6`[which(x = `df.p1-paraffin-6`$pvalue >= 0.05),1])
+
+#bad_taxa <- list.append(bad_taxa,`df.p2-buffer-8`[which(x = `df.p2-buffer-8`$pvalue >= 0.05),1])
+#bad_taxa <- list.append(bad_taxa,`df.p2-PCR_ctrl_H2O-1`[which(x = `df.p2-PCR_ctrl_H2O-1`$pvalue >= 0.05),1])
+bad_taxa <- list.append(bad_taxa,`df.p2-PCR_ctrl_H2O-2`[which(x = `df.p2-PCR_ctrl_H2O-2`$pvalue >= 0.05),1])
+#bad_taxa <- list.append(bad_taxa,`df.p2-paraffin-8`[which(x = `df.p2-paraffin-8`$pvalue >= 0.05),1])
+
+# a <- union(bad_taxa[[1]],bad_taxa[[2]])
+# b <- union(bad_taxa[[3]],bad_taxa[[4]])
+# c <- union(bad_taxa[[5]],bad_taxa[[6]])
+# d <- union(bad_taxa[[7]],bad_taxa[[8]])
+# e <- union(bad_taxa[[9]],bad_taxa[[10]])
+# f <- union(bad_taxa[[11]],bad_taxa[[12]])
+# g <- union(bad_taxa[[13]],bad_taxa[[14]])
+# h <- union(bad_taxa[[15]],bad_taxa[[16]])
+# 
+# a <- union(a,b)
+# c <- union(c,d)
+# e <- union(e,f)
+# g <- union(g,h)
+# 
+# a <- union(a,c)
+# e <- union(e,g)
+
+bad_taxa <- unique(unlist(bad_taxa)) #all OTUs representing species we have to remove from p.true.RmLowAbun.RmHighPrev.man
+length(bad_taxa)
+
+# using the following commentended code is only correct if the OTUs from bad_taxa have the same reference as our p.true.RmLowAbun.RmHighPrev.man phyloseq object 
+#p.true.RmLowAbun.RmHLPrev.man1 <- subset_taxa(p.true.RmLowAbun.RmHighPrev.man,!(taxa_names(p.true.RmLowAbun.RmHighPrev.man) %in% bad_taxa))
+
+p.comb <- subset_taxa(p.comb, !(taxa_names(p.comb) %in% bad_taxa))
+p.true.RmLowAbun.RmHLPrev.man <- subset_samples(physeq = p.comb, TRUE_control == "TRUE")
+p.true.RmLowAbun.RmHLPrev.man <- prune_taxa(x = p.true.RmLowAbun.RmHLPrev.man,taxa = taxa_names(p.true.RmLowAbun.RmHLPrev.man)[-(which(taxa_sums(p.true.RmLowAbun.RmHLPrev.man)==0))])
+```
+
+The overlap is now
+
+```{r}
+PlotVenn2Sets(p.true.RmLowAbun.RmHLPrev.man %>% otu_table() %>% rownames(),
+              physeq.filt.nct.s.1500.80.unify %>% otu_table() %>% rownames(),
+              "True samples", "NCT samples")
+```
+
+Further, we have a look at those 49 taxas in NCTs but not contaminants
+
+```{r}
+physeq.nct.NotCont.man <- prune_taxa(intersect(physeq.filt.nct.s.1500.80.unify %>% otu_table() %>% rownames(), 
+                                           p.true.RmLowAbun.RmHLPrev.man %>% otu_table() %>% rownames()),
+                                 physeq.filt.nct.s.1500.80.unify)
+Inspect_taxa_Species(physeq.nct.NotCont.man, "In NCTs but not contaminants")
+```
+
+### Inter-Batch effect correction
+
+We apply ConQuR to correct batch effect across batches.
+
+First, we apply the batch correction on DNAex_round
+
+```{r}
+#p.true.RmLowAbun.RmHLPrev.batchDNA <- ConQuR_applyCP(phyloseq = p.true.RmLowAbun.RmHLPrev,meta_data = metadata,batch_type = "DNAex",batch_ref = 1)
+batch_type = "DNA"
+otu <- as(otu_table(p.true.RmLowAbun.RmHLPrev.man), "matrix")
+if(taxa_are_rows(p.true.RmLowAbun.RmHLPrev.man)){otu <- t(otu)}
+ if(grepl("dna", tolower(batch_type), fixed = TRUE)){
+  sub.meta.data <- sd.new[sd.new$TRUE_control == "TRUE",]
+  sub.meta.data <- sub.meta.data %>% mutate(sample_sidev2 = as.factor(sample_side),
+                                               DNAex_roundv2 = as.factor(DNAex_round))
+  batchid = sub.meta.data[,c("DNAex_roundv2")]
+  covar = batchid
+  batch_refer = "2"
+}
+ if(grepl("pcr", tolower(batch_type), fixed = TRUE)){
+   sub.meta.data <- sd.new[sd.new$TRUE_control == "TRUE",]
+   sub.meta.data <- sub.meta.data %>% mutate(sample_sidev2 = as.factor(sample_side),
+                                               PCR_roundv2 = as.factor(PCR_round))
+   batchid = sub.meta.data[,c("PCR_roundv2")]
+   covar = batchid
+   batch_refer = "2"
+}
+options(warn = -2)
+taxa_corrected <- ConQuR(tax_tab = otu,batchid = batchid,covariates = covar,batch_ref = batch_refer)
+tmp_phy <- p.true.RmLowAbun.RmHLPrev.man
+otu_table(tmp_phy) <- otu_table(taxa_corrected %>% t(),taxa_are_rows = TRUE)
+Plot_PCoA(TAX = otu,factor = batchid,main="Pre-Correction, Bray Curtis")
+Plot_PCoA(TAX = taxa_corrected,factor = batchid ,main = "Post-Correction, Bray Curtis")
+p.true.RmLowAbun.RmHLPrev.batchDNA.man <- tmp_phy
+rm(batch_type)
+rm(otu)
+rm(sub.meta.data)
+rm(batchid)
+rm(covar)
+rm(batch_refer)
+rm(tmp_phy)
+```
+
+```{r}
+#p.true.RmLowAbun.RmHLPrev.batchPCR <- ConQuR_applyCP(phyloseq = p.true.RmLowAbun.RmHLPrev.batchDNA,meta_data = metadata,batch_type = "PCR",batch_ref = 1)
+
+batch_type = "PCR"
+otu <- as(otu_table(p.true.RmLowAbun.RmHLPrev.batchDNA.man), "matrix")
+if(taxa_are_rows(p.true.RmLowAbun.RmHLPrev.batchDNA.man)){otu <- t(otu)}
+if(grepl("dna", tolower(batch_type), fixed = TRUE)){
+  sub.meta.data <- sd.new[sd.new$TRUE_control == "TRUE",]
+  sub.meta.data <- sub.meta.data %>% mutate(sample_sidev2 = as.factor(sample_side),
+                                              DNAex_roundv2 = as.factor(DNAex_round))
+  batchid = sub.meta.data[,c("DNAex_roundv2")]
+  covar = sub.meta.data[,c("sample_sidev2")]
+  batch_refer = "1"
+}
+if(grepl("pcr", tolower(batch_type), fixed = TRUE)){
+  sub.meta.data <- sd.new[sd.new$TRUE_control == "TRUE",]
+  sub.meta.data <- sub.meta.data %>% mutate(sample_sidev2 = as.factor(sample_side),
+                                              PCR_roundv2 = as.factor(PCR_round))
+  batchid = sub.meta.data[,c("PCR_roundv2")]
+  covar = sub.meta.data[,c("sample_sidev2")]
+  batch_refer = "2"
+}
+options(warn = -2)
+taxa_corrected <- ConQuR(tax_tab = otu,batchid = batchid,covariates = covar,batch_ref = batch_refer)
+tmp_phy <- p.true.RmLowAbun.RmHLPrev.batchDNA.man
+otu_table(tmp_phy) <- otu_table(taxa_corrected %>% t(),taxa_are_rows = TRUE)
+Plot_PCoA(TAX = otu,factor = batchid,main="Pre-Correction, Bray Curtis")
+Plot_PCoA(TAX = taxa_corrected,factor = batchid ,main = "Post-Correction, Bray Curtis")
+p.true.RmLowAbun.RmHLPrev.batchPCR.man <- tmp_phy
+rm(batch_type)
+rm(otu)
+rm(sub.meta.data)
+rm(batchid)
+rm(covar)
+rm(batch_refer)
+rm(tmp_phy)
+```
+--
+
+```{r}
+p.true.RmLowAbun.RmHLPrev.batch.man <- p.true.RmLowAbun.RmHLPrev.batchPCR.man
+```
+
+
+### Normalization by Rarefaction
+
+First of all, we have a look at bacterial reads of each sample
+
+```{r}
+Inspect_SequencingDepth(p.true.RmLowAbun.RmHLPrev.batch.man)
+```
+
+
+Rarefying curve
+
+```{r}
+tab <- p.true.RmLowAbun.RmHLPrev.batch.man %>% otu_table() 
+class(tab) <- "matrix"
+rarecurve(tab %>% t(), step=50, cex=0.5)
+```
+
+
+
+
+```{r}
+#p.comb.filt.s.1500.80.true <- subset_samples(p.comb.filt.s.1500.80.r,TRUE_control=="TRUE") #only true samples
+#p.comb.filt.s.1500.80.true <- prune_taxa(x = p.comb.filt.s.1500.80.true,taxa = taxa_names(p.comb.filt.s.1500.80.true)[-(which(taxa_sums(p.comb.filt.s.1500.80.true)==0))]) #only taxa found in true samples
+```
+### Prev-Prev plot
+```{r}
+# # Make phyloseq object of presence-absence in negative controls and true samples
+# ps.pa <- transform_sample_counts(p.comb.filt.s.1500.80, function(abund) 1*(abund>0)) #based on original data
+# ps.pa.neg <- prune_samples(sample_data(ps.pa)$TRUE_control == "control", ps.pa)
+# ps.pa.pos <- prune_samples(sample_data(ps.pa)$TRUE_control == "TRUE", ps.pa)
+# # Make data.frame of prevalence in positive and negative samples
+# 
+# NoContaminant.nej <- taxa_names(p.comb.filt.s.1500.80) %in% taxa_names(p.true.RmLowAbun.RmHLPrev.batchPCR.man)
+# NoContaminant.nej <- as.character(NoContaminant.nej)
+# df.pa <- data.frame(pa.pos=taxa_sums(ps.pa.pos), pa.neg=taxa_sums(ps.pa.neg),
+#                       NoContaminant=NoContaminant.nej)
+# ggplot(data=df.pa, aes(x=pa.neg, y=pa.pos, color=NoContaminant)) + geom_point() +
+#   xlab("Prevalence (Negative Controls)") + ylab("Prevalence (True Samples)")
+# 
+# #Observe taxa with Prevalence in True Sample of 0 are still contained in the data -> not tested by our method
+```
+
+### Decontam p-Histogram
+```{r}
+# noncontamdf.prev <- isNotContaminant(p.comb.filt.s.1500.80.r, method = "prevalence", neg ="is.neg",threshold = 0.5,detailed = TRUE)
+# #threshold of 0.5 classifies all taxa present in more negative controls then tisse samples as contaminant
+# #intersting would be the comparison of this classification and our NEJMAN derived classification method
+# hist(noncontamdf.prev$p, 100, ylim = c(0,300), xlim = c(0,1))
+```

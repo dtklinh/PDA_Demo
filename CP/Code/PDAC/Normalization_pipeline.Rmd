@@ -1,0 +1,145 @@
+---
+title: "Normalization"
+author: "Christoph Petrynowski"
+date: "2023-03-15"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+#Load phyloseq
+```{r}
+library("phyloseq")
+packageVersion("phyloseq")
+```
+#given phyloseq-object
+```{r}
+phy <- p.true.RmLowAbun.RmHLPrev
+```
+
+```{r}
+nsamples(phy)
+ntaxa(phy)
+sample_variables(phy)
+```
+We observe our sample_variable of interest:
+```{r}
+head(sample_data(phy)$sample_side,20)
+```
+
+Lets take a look at the variance of OTUs:
+```{r}
+hist(log10(apply(otu_table(p.true.filt.s.unify),1,var)),xlab = "log10(variance)",main = "OTU variance on a log scale - raw tissue data")
+
+hist(log10(apply(otu_table(phy),1,var)),xlab = "log10(variance)",main = "OTU variance on a log scale - filtered tissue data")
+
+#Notice the above plots are using unmodified read counts.
+
+#We perform this using transformed (relative) sample counts aswell 
+
+phy.r <- transform_sample_counts(physeq = p.true.filt.s.unify, function(x){x/sum(x)})
+hist(log10(apply(otu_table(phy.r),1,var)),xlab = "log10(variance)",main = "OTU variance on a log scale - proportion_normalized raw tissue data")
+
+
+phy.r <- transform_sample_counts(physeq = phy, function(x){x/sum(x)})
+phy.r <- prune_samples(x = phy.r,sample_sums(phy.r) >0)
+hist(log10(apply(otu_table(phy.r),1,var)),xlab = "log10(variance)",main = "OTU variance on a log scale - proportion_normalized filtered tissue data")
+rm(phy.r)
+```
+
+Do we apply a Variance Threshold?
+https://joey711.github.io/phyloseq-extensions/DESeq.html
+
+### DESeq2
+```{r}
+# if (!require("BiocManager", quietly = TRUE))
+#     install.packages("BiocManager")
+# BiocManager::install("DESeq2")
+library("DESeq2");packageVersion("DESeq2")
+```
+
+```{r}
+#in downstream analysis DESeq throws error msg: Error in .local(object, ..., value) : all(!is.na(value)) is not true
+#the reason are samples not containing any read counts, i.e. sample_sums(phyloseq) == 0 for some samples
+
+phy <- prune_samples(x = phy,sample_sums(phy) >0)
+
+DESeq2_obj <- phyloseq_to_deseq2(phy, ~ sample_side)
+#calculate geometric means prior to estimate size factor to avaid error msg
+gm_mean = function(x, na.rm = TRUE){
+  exp(sum(log(x[x>0]), na.rm = na.rm)/length(x))
+}
+geoMeans = apply(counts(DESeq2_obj),1,gm_mean)
+side_dds = estimateSizeFactors(DESeq2_obj,geoMeans = geoMeans)
+side_dds <- DESeq(side_dds,fitType = "local")
+```
+
+Major help provided from 
+(1) https://bioconductor.org/packages/devel/bioc/vignettes/phyloseq/inst/doc/phyloseq-mixture-models.html#deseq2-conversion-and-call
+(2) https://stackoverflow.com/a/69491108
+(3) https://support.bioconductor.org/p/9138100/#9138141
+
+```{r}
+res <- results(object = side_dds,cooksCutoff = FALSE)
+alpha = 1
+res$padj[is.na(res$padj)] <- 1
+sigtab <- res[(res$padj < alpha),]
+sigtab <- cbind(as(object = sigtab,Class = "data.frame"), as(tax_table(phy)[rownames(sigtab),],"matrix"))
+head(sigtab)
+```
+
+```{r}
+posingtab = sigtab[sigtab[,"log2FoldChange"] > 0,]
+posingtab = posingtab[,c("baseMean","log2FoldChange","lfcSE","padj","phylum","class","order","family","genus","species")]
+```
+
+```{r}
+library(ggplot2)
+theme_set(theme_bw())
+sigtabgen = subset(sigtab, !is.na(species))
+# Order order
+x = tapply(sigtabgen$log2FoldChange, sigtabgen$order, function(x) max(x))
+x = sort(x, TRUE)
+sigtabgen$order = factor(as.character(sigtabgen$order), levels=names(x))
+# species order
+x = tapply(sigtabgen$log2FoldChange, sigtabgen$species, function(x) max(x))
+x = sort(x, TRUE)
+sigtabgen$species = factor(as.character(sigtabgen$species), levels=names(x))
+ggplot(sigtabgen, aes(y=order, x=log2FoldChange, color=order)) + 
+  geom_vline(xintercept = 0.0, color = "gray", size = 0.5) +
+  geom_point(size=6) + 
+  theme(axis.text.x = element_text(angle = -90, hjust = 0, vjust=0.5))
+```
+
+### Variance Stabilization
+```{r}
+# devtools::install_github("MonashBioinformaticsPlatform/varistran")
+#BiocManager::install("edgeR")
+library(varistran)
+library(edgeR)
+package.version("varistran")
+package.version("edgeR")
+```
+
+```{r}
+DESeq2_obj <- phyloseq_to_deseq2(phy, ~ sample_side)
+counts <- DESeq2_obj@assays@data$counts
+design <- model.matrix(~ phy@sam_data$sample_side)
+
+y <- vst(counts,design = design)
+
+y
+
+plot_stability(y, counts,design=design)
+```
+
+```{r}
+plot_biplot(y)
+```
+
+
+```{r}
+plot_heatmap(y, n=50, cluster_samples = TRUE)
+```
+

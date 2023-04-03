@@ -1,0 +1,488 @@
+---
+title: "Analysis_Pipeline"
+author: "Christoph Petrynowski"
+date: "2023-03-14"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+### LibrarySize - tissue samples - boxplots
+```{r visualize LibrarySize of tissue samples as a boxplot(normal vs tumor) - colored by DNAex_round, PCR_round}
+
+df <- inner_join(meta(p.true.RmLowAbun.RmHLPrev), metadata[metadata[,"uniqueID"] %in% meta(p.true.RmLowAbun.RmHLPrev)[,"uniqueID"],c("uniqueID","DNAex_round","PCR_round")], by = "uniqueID")
+sample_data(p.true.RmLowAbun.RmHLPrev)$DNAex_round <- df$DNAex_round
+sample_data(p.true.RmLowAbun.RmHLPrev)$PCR_round <- df$PCR_round
+
+phy <- p.true.RmLowAbun.RmHLPrev
+#prepare dataframe for plotting
+df <- meta(phy) # Put sample_data into a ggplot-friendly data.frame
+df$LibrarySize <- sample_sums(phy)
+df <- df[order(df$LibrarySize),]
+df$Index <- seq(nrow(df))
+
+#set levels
+df$sample_side <- factor(df$sample_side)
+#create comb: vector containing groups for groupwise comparisons
+comb <- split(t(combn(levels(df$sample_side), 2)),seq(nrow(t(combn(levels(df$sample_side), 2)))))
+#boxplot comparing librarysizes of normal vs tumor samples
+ggplot(df, aes(x = sample_side, y = LibrarySize)) +
+  geom_boxplot(outlier.shape = NA) +
+  geom_jitter(width = 0.2) +
+  labs(x = "sample type") +
+  geom_signif(comparisons = comb, map_signif_level = FALSE, color = "black") +
+  ggtitle("LibrarySize of tissue samples grouped by sample side") +
+  theme(text = element_text(size = 10))
+
+#set levels
+df$DNAex_round <- factor(df$DNAex_round)
+#create comb: vector containing groups for groupwise comparisons
+comb <- split(t(combn(levels(df$DNAex_round), 2)),seq(nrow(t(combn(levels(df$DNAex_round), 2)))))
+#boxplot comparing librarysizes of different DNAex batches
+ggplot(df, aes(x = DNAex_round, y = LibrarySize, color = sample_side)) +
+    geom_boxplot(outlier.shape = NA) +
+    geom_jitter(width = 0.2) +
+    labs(x = "DNA extraction round") + 
+    geom_signif(tip_length = 0.02,step_increase = 0.02,comparisons = comb, map_signif_level = FALSE,y_position = seq.int(55000,200000,8000),color = "black") +
+  ggtitle("LibrarySize of tissue samples grouped by DNA extraction batch") +
+    theme(text = element_text(size = 10))
+
+#set levels
+df$PCR_round <- factor(df$PCR_round)
+#create comb: vector containing groups for groupwise comparisons
+comb <- split(t(combn(levels(df$PCR_round), 2)),seq(nrow(t(combn(levels(df$PCR_round), 2)))))
+#boxplot comparing librarysizes of different PCR batches
+ggplot(df, aes(x = PCR_round, y = LibrarySize, color = sample_side)) +
+    geom_boxplot(outlier.shape = NA) +
+    geom_jitter(width = 0.2) +
+    labs(x = "PCR round") + 
+    geom_signif(tip_length = 0.02,step_increase = 0.1,comparisons = comb, map_signif_level = FALSE,color = "black") +
+  ggtitle("LibrarySize of tissue samples grouped by PCR extraction batch") +
+    theme(text = element_text(size = 10))
+```
+
+```{r}
+#prepare dataframe for plotting
+df <- meta(phy) # Put sample_data into a ggplot-friendly data.frame
+df$LibrarySize <- sample_sums(phy)
+df <- df[order(df$LibrarySize),]
+df$Index <- seq(nrow(df))
+
+data <- reshape2::melt(df,measure.vars = c("LibrarySize"),value.name = c("LibrarySize"))
+data$sample_side <- factor(data$sample_side)
+comb <- split(t(combn(levels(data$sample_side), 2)),seq(nrow(t(combn(levels(data$sample_side), 2)))))
+ggplot(data, aes(x = sample_side,y = LibrarySize)) +geom_boxplot(outlier.shape = NA) + 
+    geom_jitter(width = 0.2) + labs(x = "sample type") +
+    geom_signif(comparisons = comb, map_signif_level = FALSE, color = "black",y_position = c(2000)) + facet_wrap(vars(DNAex_round), scales = "free_y") +
+    ggtitle("LibrarySize - DNA extraction batches grouped by sample side")
+
+ggplot(data, aes(x = sample_side,y = LibrarySize)) +geom_boxplot(outlier.shape = NA) + 
+  geom_jitter(width = 0.2) + labs(x = "sample type") +
+  geom_signif(comparisons = comb, map_signif_level = FALSE, color = "black",step_increase = 0.1) + facet_wrap(vars(PCR_round), scales = "free_y") + 
+  ggtitle("LibrarySize - PCR batches grouped by sample side")
+```
+#Prevalence
+```{r}
+prevdf <- data.frame(Prevalence = prevalence(x = phy,detection = 0,count = TRUE), 
+                     TotalAbundance = taxa_sums(phy),
+                     tax_table(phy))
+#Prevalence: in how many tissue samples do our species appear
+#TotalAbundance: sum of read counts for a species in all samples
+#tax_table from the phyloseq object in use
+```
+
+```{r}
+ggplot(prevdf, aes(TotalAbundance, Prevalence/nsamples(phy),color = order))+ geom_hline(yintercept = 0.05, alpha=0.5,linetype=2)+
+  geom_hline(yintercept = 0.5, alpha=0.5,linetype=2)+
+  geom_point(size=2,alpha=0.6)+ scale_x_log10()+xlab("TotalAbundance")+
+  ylab("Prevalence as Fraction of Samples")+facet_wrap(~order)+theme(legend.position = "none")
+```
+
+Each point represents a different species/taxa. Notice the outliers found in the order Sphingomonadales.
+
+### Something abundance
+```{r}
+mphyseq <- psmelt(phy)
+mphyseq$sample_side <- as.factor(mphyseq$sample_side)
+comb <- split(t(combn(levels(mphyseq$sample_side), 2)),seq(nrow(t(combn(levels(mphyseq$sample_side), 2)))))
+ggplot(data = mphyseq,mapping = aes(x = sample_side,y = Abundance,color=order))+
+  scale_y_log10()+
+  xlab("Sample type")+
+  geom_point(alpha=0.3)+
+  geom_jitter(width = 0.1)+
+  facet_wrap(~order)+
+  geom_signif(comparisons = comb, map_signif_level = FALSE, color = "black")+theme(legend.position = "none")
+```
+
+Venn diagram of OTU distribution
+```{r}
+phy 
+phy1normal <- subset_samples(phy,sample_side == "normal")
+phy1normal <- prune_taxa(x = phy1normal,taxa = taxa_names(phy1normal)[taxa_sums(phy1normal)>0])
+
+phy1tumor <- subset_samples(phy,sample_side == "tumor")
+phy1tumor <- prune_taxa(x = phy1tumor,taxa = taxa_names(phy1tumor)[taxa_sums(phy1tumor)>0])
+
+PlotVenn2Sets(set1 = phy1normal %>% otu_table() %>% rownames(),set2 = phy1tumor %>% otu_table() %>% rownames(),nameset1 = "normal",nameset2 = "tumor")
+```
+OTUs only found in tumor
+```{r}
+taxa_names(phy1tumor) %in% taxa_names(phy1normal)
+taxa_names(phy1tumor)[!taxa_names(phy1tumor) %in% taxa_names(phy1normal)]
+tax_table(phy)[taxa_names(phy1tumor)[!taxa_names(phy1tumor) %in% taxa_names(phy1normal)],4:7]
+```
+
+OTUs found in both
+```{r}
+intersect(x = taxa_names(phy1normal),y = taxa_names(phy1tumor))
+tax_table(phy)[intersect(x = taxa_names(phy1normal),y = taxa_names(phy1tumor)),4:7]
+```
+
+OTUs only found in normal
+```{r}
+taxa_names(phy1normal) %in% taxa_names(phy1tumor)
+taxa_names(phy1normal)[!taxa_names(phy1normal) %in% taxa_names(phy1tumor)]
+tax_table(phy)[taxa_names(phy1normal)[!taxa_names(phy1normal) %in% taxa_names(phy1tumor)],4:7]
+```
+
+OTUs Prevalence-Abundance for tumor 
+```{r}
+prevdf <- data.frame(Prevalence = prevalence(x = phy1tumor,detection = 0,count = TRUE), 
+                     TotalAbundance = taxa_sums(phy1tumor),
+                     tax_table(phy1tumor))
+ggplot(prevdf, aes(TotalAbundance, Prevalence/nsamples(phy1tumor),color = order))+ geom_hline(yintercept = 0.05, alpha=0.5,linetype=2)+
+    geom_hline(yintercept = 0.5, alpha=0.5,linetype=2)+
+    geom_point(size=2,alpha=0.6)+ scale_x_log10()+xlab("TotalAbundance")+
+    ylab("Prevalence as Fraction of Samples")+facet_wrap(~order)+theme(legend.position = "none")
+```
+
+OTUs Prevalence-Abundance for normal
+```{r}
+prevdf <- data.frame(Prevalence = prevalence(x = phy1normal,detection = 0,count = TRUE), 
+                     TotalAbundance = taxa_sums(phy1normal),
+                     tax_table(phy1normal))
+ggplot(prevdf, aes(TotalAbundance, Prevalence/nsamples(phy1normal),color = order))+ geom_hline(yintercept = 0.05, alpha=0.5,linetype=2)+
+    geom_hline(yintercept = 0.5, alpha=0.5,linetype=2)+
+    geom_point(size=2,alpha=0.6)+ scale_x_log10()+xlab("TotalAbundance")+
+    ylab("Prevalence as Fraction of Samples")+facet_wrap(~order)+theme(legend.position = "none")
+```
+
+
+### Microbial composition - species level
+```{r Microbial composition of tissue samples, DNA extraction batch, PCR batch}
+
+physeq.fam <- transform_sample_counts(phy, function(x){x/sum(x)}) #transform total read counts into per sample relative counts
+df.fam.melt <- psmelt(physeq.fam) # use psmelt for generating a dataframe -> useful for ggplot
+
+df.fam.melt$species.v2 <- ifelse(df.fam.melt$Abundance>0.04,as.character(df.fam.melt$species), "others") # define cut-off for species to be named or else be grouped into "others
+#ploting abundance > 5% | 1% requires 161 colors
+df.fam.melt$species.v2 <- factor(df.fam.melt$species.v2, levels=rev(unique(df.fam.melt$species.v2)))
+cols <- c("#9d547c","#56ca63","#a357d6","#419d2a","#525fd6","#8cbe3a","#c944aa","#5ba557","#9e66cb","#c1b735","#6d82ec","#e69728","#6654b0","#799330","#da7fdf","#3c782c","#e44586","#63c996","#dc3f53","#49cbc8","#cf3f29","#4fabda","#da6c2b","#598bd1","#b78c24","#8d4191","#a0b971","#b2386a","#479d71","#ae4341","#2ba198","#e07557","#5361a3","#dda353","#aa98df","#5b6114","#dc89bf","#327243","#e57b94","#277257","#9b62a0","#bbab59","#98495a","#526229","#d8827d","#857624","#9a4a22","#7c7d46","#e3a073","#9e6b33", "gray74", "lawngreen", "orchid2", "olivedrab1", "ivory3", "darkseagreen", "bisque2", "darkgoldenrod2", "blue2", "skyblue", "seashell2", "turquoise", "tan1", "seagreen2", "palevioletred3", "linen", "steelblue4", "limegreen", "purple3", "khaki3", "snow3", "darkslategray", "lavender", "magenta2", "palegreen", "salmon", "maroon", "cyan2","#671408","#FAEBD7","#7FFFD4","#F0FFFF","#A52A2A","burlywood","cadetblue","#7FFF00","chocolate","cornsilk","#FF7F50","#008B8B","darkgoldenrod1","darkolivegreen","darkorange4","darkslategray3","navajowhite3","orchid4","gray25","#F0924D","blue3","grey","cyan")
+#microbial composition at species level
+ggplot(df.fam.melt, aes(x=id, y=Abundance, fill=species.v2)) +
+  geom_bar(stat="identity") +
+  scale_y_continuous(labels = scales::percent, expand = c(0, 0), limits = c(0, 1.02)) +
+  scale_fill_manual(values = cols) +
+  xlab ("") +
+  ylab("Relative abundance") +
+  theme_bw() +
+  ggtitle("Microbial composition at species level")+
+  theme( axis.text.x = element_blank(),
+        axis.text.y = element_text (size=12),
+        axis.title = element_text(size=14, face="bold"))+
+  theme(legend.position = "bottom",
+        legend.title = element_blank(),
+        legend.background = element_rect(size=0.25, linetype="solid", colour ="black"),
+        legend.key.size = unit(4,"mm"))
+
+#microbial composition at species level - grouped by DNA Batch
+ggplot(df.fam.melt, aes(x=id, y=Abundance, fill=species.v2)) +
+  geom_bar(stat="identity") +
+  scale_y_continuous(labels = scales::percent, expand = c(0, 0), limits = c(0, 1.02)) +
+  scale_fill_manual(values = cols) +
+  xlab ("") +
+  ylab("Relative abundance") +
+  theme_bw() +
+  ggtitle("Microbial composition at species level - grouped by DNA Batch")+
+  facet_wrap(vars(DNAex_round), scales = "free_y") +
+  theme( axis.text.x = element_blank(),
+        axis.text.y = element_text (size=12),
+        axis.title = element_text(size=14, face="bold"))+
+  theme(legend.position = "bottom",
+        legend.title = element_blank(),
+        legend.background = element_rect(size=0.25, linetype="solid", colour ="black"),
+        legend.key.size = unit(4,"mm"))
+
+#microbial composition at species level - grouped by PCR Batch
+ggplot(df.fam.melt, aes(x=id, y=Abundance, fill=species.v2)) +
+  geom_bar(stat="identity") +
+  scale_y_continuous(labels = scales::percent, expand = c(0, 0), limits = c(0, 1.02)) +
+  scale_fill_manual(values = cols) +
+  xlab ("") +
+  ylab("Relative abundance") +
+  theme_bw() +
+  ggtitle("Microbial composition at species level - grouped by PCR Batch")+
+  facet_wrap(vars(PCR_round), scales = "free_y") +
+  theme( axis.text.x = element_blank(),
+        axis.text.y = element_text (size=12),
+        axis.title = element_text(size=14, face="bold"))+
+  theme(legend.position = "bottom",
+        legend.title = element_blank(),
+        legend.background = element_rect(size=0.25, linetype="solid", colour ="black"),
+        legend.key.size = unit(4,"mm"))
+```
+### Microbial composition - genus level
+```{r Microbial composition of tissue samples, DNA extraction batch, PCR batch}
+
+physeq.fam <- transform_sample_counts(phy, function(x){x/sum(x)}) #transform total read counts into per sample relative counts
+df.fam.melt <- psmelt(physeq.fam) # use psmelt for generating a dataframe -> useful for ggplot
+
+df.fam.melt$genus.v2 <- ifelse(df.fam.melt$Abundance>0.04,as.character(df.fam.melt$genus), "others") # define cut-off for genus to be named or else be grouped into "others
+#ploting abundance > 5% | 1% requires 161 colors
+df.fam.melt$genus.v2 <- factor(df.fam.melt$genus.v2, levels=rev(unique(df.fam.melt$genus.v2)))
+cols <- c("#9d547c","#56ca63","#a357d6","#419d2a","#525fd6","#8cbe3a","#c944aa","#5ba557","#9e66cb","#c1b735","#6d82ec","#e69728","#6654b0","#799330","#da7fdf","#3c782c","#e44586","#63c996","#dc3f53","#49cbc8","#cf3f29","#4fabda","#da6c2b","#598bd1","#b78c24","#8d4191","#a0b971","#b2386a","#479d71","#ae4341","#2ba198","#e07557","#5361a3","#dda353","#aa98df","#5b6114","#dc89bf","#327243","#e57b94","#277257","#9b62a0","#bbab59","#98495a","#526229","#d8827d","#857624","#9a4a22","#7c7d46","#e3a073","#9e6b33", "gray74", "lawngreen", "orchid2", "olivedrab1", "ivory3", "darkseagreen", "bisque2", "darkgoldenrod2", "blue2", "skyblue", "seashell2", "turquoise", "tan1", "seagreen2", "palevioletred3", "linen", "steelblue4", "limegreen", "purple3", "khaki3", "snow3", "darkslategray", "lavender", "magenta2", "palegreen", "salmon", "maroon", "cyan2","#671408","#FAEBD7","#7FFFD4","#F0FFFF","#A52A2A","burlywood","cadetblue","#7FFF00","chocolate","cornsilk","#FF7F50","#008B8B","darkgoldenrod1","darkolivegreen","darkorange4","darkslategray3","navajowhite3","orchid4","gray25","#F0924D","blue3","grey","cyan")
+#microbial composition at genus level
+ggplot(df.fam.melt, aes(x=id, y=Abundance, fill=genus.v2)) +
+  geom_bar(stat="identity") +
+  scale_y_continuous(labels = scales::percent, expand = c(0, 0), limits = c(0, 1.02)) +
+  scale_fill_manual(values = cols) +
+  xlab ("") +
+  ylab("Relative abundance") +
+  theme_bw() +
+  ggtitle("Microbial composition at genus level")+
+  theme( axis.text.x = element_blank(),
+        axis.text.y = element_text (size=12),
+        axis.title = element_text(size=14, face="bold"))+
+  theme(legend.position = "bottom",
+        legend.title = element_blank(),
+        legend.background = element_rect(size=0.25, linetype="solid", colour ="black"),
+        legend.key.size = unit(4,"mm"))
+
+#microbial composition at genus level - grouped by DNA Batch
+ggplot(df.fam.melt, aes(x=id, y=Abundance, fill=genus.v2)) +
+  geom_bar(stat="identity") +
+  scale_y_continuous(labels = scales::percent, expand = c(0, 0), limits = c(0, 1.02)) +
+  scale_fill_manual(values = cols) +
+  xlab ("") +
+  ylab("Relative abundance") +
+  theme_bw() +
+  ggtitle("Microbial composition at genus level - grouped by DNA Batch")+
+  facet_wrap(vars(DNAex_round), scales = "free_y") +
+  theme( axis.text.x = element_blank(),
+        axis.text.y = element_text (size=12),
+        axis.title = element_text(size=14, face="bold"))+
+  theme(legend.position = "bottom",
+        legend.title = element_blank(),
+        legend.background = element_rect(size=0.25, linetype="solid", colour ="black"),
+        legend.key.size = unit(4,"mm"))
+
+#microbial composition at genus level - grouped by PCR Batch
+ggplot(df.fam.melt, aes(x=id, y=Abundance, fill=genus.v2)) +
+  geom_bar(stat="identity") +
+  scale_y_continuous(labels = scales::percent, expand = c(0, 0), limits = c(0, 1.02)) +
+  scale_fill_manual(values = cols) +
+  xlab ("") +
+  ylab("Relative abundance") +
+  theme_bw() +
+  ggtitle("Microbial composition at genus level - grouped by PCR Batch")+
+  facet_wrap(vars(PCR_round), scales = "free_y") +
+  theme( axis.text.x = element_blank(),
+        axis.text.y = element_text (size=12),
+        axis.title = element_text(size=14, face="bold"))+
+  theme(legend.position = "bottom",
+        legend.title = element_blank(),
+        legend.background = element_rect(size=0.25, linetype="solid", colour ="black"),
+        legend.key.size = unit(4,"mm"))
+```
+### Microbial composition - order level
+```{r Microbial composition of tissue samples, DNA extraction batch, PCR batch}
+
+physeq.fam <- transform_sample_counts(phy, function(x){x/sum(x)}) #transform total read counts into per sample relative counts
+df.fam.melt <- psmelt(physeq.fam) # use psmelt for generating a dataframe -> useful for ggplot
+
+df.fam.melt$order.v2 <- ifelse(df.fam.melt$Abundance>0.04,as.character(df.fam.melt$order), "others") # define cut-off for order to be named or else be grouped into "others
+#ploting abundance > 5% | 1% requires 161 colors
+df.fam.melt$order.v2 <- factor(df.fam.melt$order.v2, levels=rev(unique(df.fam.melt$order.v2)))
+cols <- c("#9d547c","#56ca63","#a357d6","#419d2a","#525fd6","#8cbe3a","#c944aa","#5ba557","#9e66cb","#c1b735","#6d82ec","#e69728","#6654b0","#799330","#da7fdf","#3c782c","#e44586","#63c996","#dc3f53","#49cbc8","#cf3f29","#4fabda","#da6c2b","#598bd1","#b78c24","#8d4191","#a0b971","#b2386a","#479d71","#ae4341","#2ba198","#e07557","#5361a3","#dda353","#aa98df","#5b6114","#dc89bf","#327243","#e57b94","#277257","#9b62a0","#bbab59","#98495a","#526229","#d8827d","#857624","#9a4a22","#7c7d46","#e3a073","#9e6b33", "gray74", "lawngreen", "orchid2", "olivedrab1", "ivory3", "darkseagreen", "bisque2", "darkgoldenrod2", "blue2", "skyblue", "seashell2", "turquoise", "tan1", "seagreen2", "palevioletred3", "linen", "steelblue4", "limegreen", "purple3", "khaki3", "snow3", "darkslategray", "lavender", "magenta2", "palegreen", "salmon", "maroon", "cyan2","#671408","#FAEBD7","#7FFFD4","#F0FFFF","#A52A2A","burlywood","cadetblue","#7FFF00","chocolate","cornsilk","#FF7F50","#008B8B","darkgoldenrod1","darkolivegreen","darkorange4","darkslategray3","navajowhite3","orchid4","gray25","#F0924D","blue3","grey","cyan")
+#microbial composition at order level
+ggplot(df.fam.melt, aes(x=id, y=Abundance, fill=order.v2)) +
+  geom_bar(stat="identity") +
+  scale_y_continuous(labels = scales::percent, expand = c(0, 0), limits = c(0, 1.02)) +
+  scale_fill_manual(values = cols) +
+  xlab ("") +
+  ylab("Relative abundance") +
+  theme_bw() +
+  ggtitle("Microbial composition at order level")+
+  theme( axis.text.x = element_blank(),
+        axis.text.y = element_text (size=12),
+        axis.title = element_text(size=14, face="bold"))+
+  theme(legend.position = "bottom",
+        legend.title = element_blank(),
+        legend.background = element_rect(size=0.25, linetype="solid", colour ="black"),
+        legend.key.size = unit(4,"mm"))
+
+#microbial composition at order level - grouped by DNA Batch
+ggplot(df.fam.melt, aes(x=id, y=Abundance, fill=order.v2)) +
+  geom_bar(stat="identity") +
+  scale_y_continuous(labels = scales::percent, expand = c(0, 0), limits = c(0, 1.02)) +
+  scale_fill_manual(values = cols) +
+  xlab ("") +
+  ylab("Relative abundance") +
+  theme_bw() +
+  ggtitle("Microbial composition at order level - grouped by DNA Batch")+
+  facet_wrap(vars(DNAex_round), scales = "free_y") +
+  theme( axis.text.x = element_blank(),
+        axis.text.y = element_text (size=12),
+        axis.title = element_text(size=14, face="bold"))+
+  theme(legend.position = "bottom",
+        legend.title = element_blank(),
+        legend.background = element_rect(size=0.25, linetype="solid", colour ="black"),
+        legend.key.size = unit(4,"mm"))
+
+#microbial composition at order level - grouped by PCR Batch
+ggplot(df.fam.melt, aes(x=id, y=Abundance, fill=order.v2)) +
+  geom_bar(stat="identity") +
+  scale_y_continuous(labels = scales::percent, expand = c(0, 0), limits = c(0, 1.02)) +
+  scale_fill_manual(values = cols) +
+  xlab ("") +
+  ylab("Relative abundance") +
+  theme_bw() +
+  ggtitle("Microbial composition at order level - grouped by PCR Batch")+
+  facet_wrap(vars(PCR_round), scales = "free_y") +
+  theme( axis.text.x = element_blank(),
+        axis.text.y = element_text (size=12),
+        axis.title = element_text(size=14, face="bold"))+
+  theme(legend.position = "bottom",
+        legend.title = element_blank(),
+        legend.background = element_rect(size=0.25, linetype="solid", colour ="black"),
+        legend.key.size = unit(4,"mm"))
+```
+
+
+# Alpha diversity
+```{r Filter pipeline: Alpha diversity}
+# Alpha diversity
+aindex <- estimate_richness(physeq = otu_table(phy), measures = c("Observed","Shannon","Simpson","InvSimpson", "Chao1","ACE"))
+
+aindex$sample_side <- meta(phy)$sample_side
+aindex$sample_side <- factor(aindex$sample_side)
+
+comb <- split(t(combn(levels(aindex$sample_side), 2)),seq(nrow(t(combn(levels(aindex$sample_side), 2)))))
+data <- reshape2::melt(aindex)
+ggplot(data, aes(x = sample_side,y = value)) +
+  # Outliers are removed, because otherwise each data point would be plotted twice; 
+  # as an outlier of boxplot and as a point of dotplot.
+  geom_boxplot(outlier.shape = NA) + 
+  geom_jitter(width = 0.2) + 
+  ggtitle("Filter pipeline approach - alpha diversity") +
+  labs(x = "sample type") +
+  geom_signif(comparisons = comb, map_signif_level = TRUE,) +
+  theme(text = element_text(size = 10)) +
+  facet_wrap(~ variable, scales = "free_y")
+```
+#Beta diversity
+####Tissue_type
+```{r TRUE - BrayCurtis - sample side}
+bray_dist = phyloseq::distance(phy, method="bray")
+bc_ordination = ordinate(phy, method="PCoA", distance=bray_dist)
+pcoa1 <- paste("PCoA 1", " [", round(bc_ordination[[3]]$Relative_eig[1], digits = 3)*100, "%]", sep = "")
+pcoa2 <- paste("PCoA 2", " [", round(bc_ordination[[3]]$Relative_eig[2], digits = 3)*100, "%]", sep = "")
+p.adonis <- pairwise.adonis(x = bray_dist,factors = sample_data(phy)$sample_side)
+p <- paste0("p = ",p.adonis$p.adjusted)
+annotations <- data.frame(
+        xpos = c(-Inf),
+        ypos =  c(Inf),
+        annotateText = p,
+        hjustvar = c(-0.2),
+        vjustvar = c(1.5))
+plot_ordination(phy, bc_ordination, color="sample_side") + 
+  geom_point(aes(colour=sample_side), size=3, alpha = 0.75) +
+  theme(aspect.ratio=1) +
+  theme_bw()+
+  stat_ellipse() +
+  xlab(pcoa1)+
+  ylab(pcoa2)+
+  theme(panel.grid =  element_blank())+
+  ggtitle("True samples - Bray curtis") +
+  theme (axis.text=element_text(size=14),
+         axis.title=element_text(size=16,face="bold"))+
+  theme(
+        # legend.justification=c(1.15,-0.15), legend.position=c(1,0),
+        legend.text = element_text(size = 12))+
+  geom_text(data=annotations,aes(x=xpos,y=ypos,hjust=hjustvar,vjust=vjustvar,label=annotateText), inherit.aes = FALSE)
+
+#introduce Pairwise.adonis for dissimilarity matrix of phy, compairing tumor vs. normal
+p.adonis.pairwise <- pairwise.adonis(x = bray_dist,factors = sample_data(phy)$sample_side)
+p.adonis.pairwise
+```
+####DNA extraction
+```{r TRUE - BrayCurtis - DNA extraction}
+bray_dist = phyloseq::distance(phy, method="bray")
+bc_ordination = ordinate(phy, method="PCoA", distance=bray_dist)
+pcoa1 <- paste("PCoA 1", " [", round(bc_ordination[[3]]$Relative_eig[1], digits = 3)*100, "%]", sep = "")
+pcoa2 <- paste("PCoA 2", " [", round(bc_ordination[[3]]$Relative_eig[2], digits = 3)*100, "%]", sep = "")
+p.adonis <- adonis2(bray_dist ~ sample_data(phy)$DNAex_round)
+p <- paste0("p = ",p.adonis$`Pr(>F)`[1])
+annotations <- data.frame(
+        xpos = c(-Inf),
+        ypos =  c(Inf),
+        annotateText = p,
+        hjustvar = c(-0.2),
+        vjustvar = c(1.5))
+plot_ordination(phy, bc_ordination, color="DNAex_round") + 
+  geom_point(aes(colour=DNAex_round), size=3,alpha = 0.75) +
+  theme(aspect.ratio=1) +
+  theme_bw()+
+  stat_ellipse() +
+  xlab(pcoa1)+
+  ylab(pcoa2)+
+  theme(panel.grid =  element_blank())+
+  ggtitle("True samples - Bray curtis") +
+  theme (axis.text=element_text(size=14),
+         axis.title=element_text(size=16,face="bold"))+
+  theme(
+        # legend.justification=c(1.15,-0.15), legend.position=c(1,0),
+        legend.text = element_text(size = 12))+
+  geom_text(data=annotations,aes(x=xpos,y=ypos,hjust=hjustvar,vjust=vjustvar,label=annotateText), inherit.aes = FALSE)
+
+#introduce Pairwise.adonis for dissimilarity matrix of phy, compairing tumor vs. normal
+p.adonis.pairwise <- pairwise.adonis(x = bray_dist,factors = sample_data(phy)$DNAex_round)
+p.adonis.pairwise
+```
+#### PCR extraction
+```{r TRUE - BrayCurtis - PCR extraction}
+bray_dist = phyloseq::distance(phy, method="bray")
+bc_ordination = ordinate(phy, method="PCoA", distance=bray_dist)
+pcoa1 <- paste("PCoA 1", " [", round(bc_ordination[[3]]$Relative_eig[1], digits = 3)*100, "%]", sep = "")
+pcoa2 <- paste("PCoA 2", " [", round(bc_ordination[[3]]$Relative_eig[2], digits = 3)*100, "%]", sep = "")
+p.adonis <- adonis2(bray_dist ~ sample_data(phy)$PCR_round)
+p <- paste0("p = ",p.adonis$`Pr(>F)`[1])
+annotations <- data.frame(
+        xpos = c(-Inf),
+        ypos =  c(Inf),
+        annotateText = p,
+        hjustvar = c(-0.2),
+        vjustvar = c(1.5))
+plot_ordination(phy, bc_ordination, color="PCR_round") + 
+  geom_point(aes(colour=PCR_round), size=3,alpha = 0.75) +
+  theme(aspect.ratio=1) +
+  theme_bw()+
+  stat_ellipse() +
+  xlab(pcoa1)+
+  ylab(pcoa2)+
+  theme(panel.grid =  element_blank())+
+  ggtitle("True samples - Bray curtis") +
+  theme (axis.text=element_text(size=14),
+         axis.title=element_text(size=16,face="bold"))+
+  theme(
+        # legend.justification=c(1.15,-0.15), legend.position=c(1,0),
+        legend.text = element_text(size = 12))+
+  geom_text(data=annotations,aes(x=xpos,y=ypos,hjust=hjustvar,vjust=vjustvar,label=annotateText), inherit.aes = FALSE)
+
+#introduce Pairwise.adonis for dissimilarity matrix of phy, compairing tumor vs. normal
+p.adonis.pairwise <- pairwise.adonis(x = bray_dist,factors = sample_data(phy)$PCR_round)
+p.adonis.pairwise
+```

@@ -1,0 +1,754 @@
+---
+title: "Bulk_tissue"
+author: "Christoph Petrynowski"
+date: "2023-03-18"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Software-Library
+
+```{r library, echo=FALSE}
+library(PERFect)
+library(phyloseq)
+library(decontam)
+library(tidyverse)
+library(pairwiseAdonis)
+library(kableExtra)
+library(vegan)
+library(tidytree)
+library(ape)
+library(ggrepel)
+library(microbiome)
+library(ggpubr) # for manual p-value assigning
+library(rstatix) # for wilcox test
+library(yingtools2)
+#if( !require(ggtree) ){
+#  install.packages(ggtree)
+#}
+library(readxl) # load excel data
+if( !require(rlist) ){
+  install.packages(rlist)
+}
+library(rlist) # work with lists
+if( !require(ggsignif) ){
+  install.packages(ggsignif)
+}
+library(ggsignif) # plot p.values on a ggplot
+set.seed(3)
+library(plyr) #for ldply - performs function on every element in list & combines the output into a dataframe
+library(reshape2) # for melting data
+if( !require(doParallel) ){
+  install.packages("doParallel")
+}
+library(doParallel) # ConQuR´s GitHub recomends this step
+#devtools::install_github("wdl2459/ConQuR")
+library(ConQuR)
+if( !require("VennDiagram") ){
+  install.packages("VennDiagram")
+}
+library("VennDiagram")
+if( !require("ggvenn") ){
+  install.packages("ggvenn")
+}
+library("ggvenn")
+library(RColorBrewer) 
+sessionInfo()
+```
+
+
+```{r}
+## adding functions
+source("CP/Code/MyFunctionsV2.R")
+source("CP/Code/MyAnalysisWithPlots.R")
+```
+
+# Raw data
+### Loading TRUE samples
+```{r loading true samples}
+physeq1 <- readRDS("bulk_tumor/2021_02_18_kpc_tumor_invitro_est1/physeq_original.rds")
+physeq2 <- readRDS("bulk_tumor/2021_02_18_kpc_tumor_invitro_est2/physeq_original.rds")
+physeq3 <- readRDS("bulk_tumor/2021_02_19_kpc_panc_invitro_est1/physeq_original.rds")
+physeq4 <- readRDS("bulk_tumor/2021_02_19_kpc_panc_invitro_est2/physeq_original.rds")
+physeq5 <- readRDS("bulk_tumor/2021_04_30_kpc_tum-panc_invitro/physeq_original.rds")
+physeq6 <- readRDS("bulk_tumor/2021_06_28_kpc_tum-panc_invitro_rep/physeq_original.rds")
+physeq7 <- readRDS("bulk_tumor/2022_02_22_kpc_tum-panc_invitro_rep2/physeq_original.rds")
+physeq8 <- readRDS("bulk_tumor/2022_02_22_kpc_tum-panc_invitro_rep3/physeq_original.rds")
+physeq9 <- readRDS("bulk_tumor/2022_02_23_kpc_tum-panc_invitro/physeq_original.rds")
+
+p.true.original <- merge_phyloseq(physeq1,physeq2,physeq3,physeq4,physeq5,physeq6,physeq7,physeq8,physeq9)#merge the different phyloseq objects into 1 phyloseq object
+# sample_data of new phyloseq-object
+
+#combine samples (read counts for same uniqueID)
+tmp_phy_merge <- merge_samples(p.true.original,group = "uniqueID")
+otu_table(tmp_phy_merge)[1:5,1:5] # transposed
+tax_table(tmp_phy_merge)[1:5,]
+head(sample_data(tmp_phy_merge)) # NA-filled
+
+#load Excel datasheet containing DNA and PCR batch information
+metaphyseq1 <- read_excel("bulk_tumor/batch_data_phyloseqs/xslx_file/2021_02_18_16s_kpc_tumor_invitro_est1_NEW.xlsx") %>% as.data.frame() #load data sheet as dataframe
+metaphyseq1 <- metaphyseq1 %>% mutate(id = paste0(uniqueID,".",sample_side)) #create id column
+metaphyseq1 <- metaphyseq1 %>% mutate_at(.vars = c("DNAex_round","PCR_round"),function(x) as.character(x)) #convert DNAex_round / PCR_round into character values
+
+metaphyseq2 <- read_excel("bulk_tumor/batch_data_phyloseqs/xslx_file/2021_02_18_16s_kpc_tumor_invitro_est2_NEW.xlsx") %>% as.data.frame() #load datasheet as dataframe
+metaphyseq2 <- metaphyseq2 %>% mutate(id = paste0(uniqueID,".",sample_side)) #create id column
+metaphyseq2 <- metaphyseq2 %>% mutate_at(.vars = c("DNAex_round","PCR_round"),function(x) as.character(x)) #convert DNAex_round / PCR_round into character values
+
+metaphyseq3 <- read_excel("bulk_tumor/batch_data_phyloseqs/xslx_file/2021_02_19_16s_kpc_panc_invitro_est1_NEW.xlsx") %>% as.data.frame() #load data sheet as dataframe
+metaphyseq3 <- metaphyseq3 %>% mutate(id = paste0(uniqueID,".",sample_side))#create id column
+metaphyseq3 <- metaphyseq3 %>% mutate_at(.vars = c("DNAex_round","PCR_round"),function(x) as.character(x)) #convert DNAex_round / PCR_round into character values
+
+metaphyseq4 <- read_excel("bulk_tumor/batch_data_phyloseqs/xslx_file/2021_02_19_16s_kpc_panc_invitro_est2_NEW.xlsx") %>% as.data.frame()#load data sheet as dataframe
+metaphyseq4 <- metaphyseq4 %>% mutate(id = paste0(uniqueID,".",sample_side))#create id column
+metaphyseq4 <- metaphyseq4 %>% mutate_at(.vars = c("DNAex_round","PCR_round"),function(x) as.character(x)) #convert DNAex_round / PCR_round into character values
+
+metaphyseq5 <- read_excel("bulk_tumor/batch_data_phyloseqs/xslx_file/2021_04_30_16s_kpc_tum-panc_invitro_NEW.xlsx") %>% as.data.frame()#load data sheet as dataframe
+metaphyseq5 <- metaphyseq5 %>% mutate(id = paste0(uniqueID,".",sample_side))#create id column
+metaphyseq5 <- metaphyseq5 %>% mutate_at(.vars = c("DNAex_round","PCR_round"),function(x) as.character(x)) #convert DNAex_round / PCR_round into character values
+
+metaphyseq6 <- read_excel("bulk_tumor/batch_data_phyloseqs/xslx_file/2021_06_28_16s_kpc_tum-panc_invitro_rep_NEW.xlsx") %>% as.data.frame()#load data sheet as dataframe
+metaphyseq6 <- metaphyseq6 %>% mutate(id = paste0(uniqueID,".",sample_side))#create id column
+metaphyseq6 <- metaphyseq6 %>% mutate_at(.vars = c("DNAex_round","PCR_round"),function(x) as.character(x)) #convert DNAex_round / PCR_round into character values
+
+metaphyseq7 <- read_excel("bulk_tumor/batch_data_phyloseqs/xslx_file/2022_02_22_16s_kpc_tum-panc_invitro_rep2_NEW.xlsx") %>% as.data.frame()#load data sheet as dataframe
+metaphyseq7 <- metaphyseq7 %>% mutate(id = paste0(uniqueID,".",sample_side))#create id column
+metaphyseq7 <- metaphyseq7 %>% mutate_at(.vars = c("DNAex_round","PCR_round"),function(x) as.character(x)) #convert DNAex_round / PCR_round into character values
+
+metaphyseq8 <- read_excel("bulk_tumor/batch_data_phyloseqs/xslx_file/2022_02_22_16s_kpc_tum-panc_invitro_rep3_NEW.xlsx") %>% as.data.frame()#load data sheet as dataframe
+metaphyseq8 <- metaphyseq8 %>% mutate(id = paste0(uniqueID,".",sample_side))#create id column
+metaphyseq8 <- metaphyseq8 %>% mutate_at(.vars = c("DNAex_round","PCR_round"),function(x) as.character(x)) #convert DNAex_round / PCR_round into character values
+
+metaphyseq9 <- read_excel("bulk_tumor/batch_data_phyloseqs/xslx_file/2022_02_23_16s_kpc_tum-panc_invitro_NEW.xlsx") %>%  as.data.frame()#load data sheet as dataframe
+metaphyseq9 <- metaphyseq9 %>% mutate(id = paste0(uniqueID,".",sample_side))#create id column
+metaphyseq9 <- metaphyseq9 %>% mutate_at(.vars = c("DNAex_round","PCR_round"),function(x) as.character(x)) #convert DNAex_round / PCR_round into character values
+
+#prep sample_data
+tmp_sample_data <- rbind(metaphyseq1,metaphyseq2,metaphyseq3,metaphyseq4,metaphyseq5,metaphyseq6,metaphyseq7,metaphyseq8,metaphyseq9) %>% distinct_at(.vars = "uniqueID",.keep_all = T)
+rownames(tmp_sample_data) <- tmp_sample_data$id #When the argument is a data.frame, sample_data will create a sample_data-class object. In this case, the rows should be named to match the sample_names of the other objects to which it will ultimately be paired.
+tmp_phy_sample <- sample_data(tmp_sample_data) #construct sample_data_class object
+#prep otu_table
+otu = as(otu_table(tmp_phy_merge), "matrix")
+if(!taxa_are_rows(tmp_phy_merge)){otu <- t(otu)}
+colnames(otu) <- tmp_sample_data$id
+tmp_phy_otu <- otu_table(otu,taxa_are_rows = TRUE) # construct otu_table_class object
+#prep tax_table
+tmp_phy_taxa <- tax_table(tmp_phy_merge)
+# combine elements and form new phyloseq
+p.true.mod <- phyloseq(tmp_phy_otu,tmp_phy_taxa,tmp_phy_sample)
+
+
+p.true.filt <- subset_taxa(p.true.mod, superkingdom=="Bacteria")
+p.true.filt.s <- tax_glom(p.true.filt, taxrank = "species", NArm = TRUE)
+
+rm(list = c("physeq1","physeq2","physeq3","physeq4","physeq5","physeq6","physeq7","physeq8","physeq9"))
+rm(list = c("tmp_phy_merge"))
+rm(list = c("tmp_phy_sample","tmp_phy_otu","tmp_phy_taxa"))
+rm(list = c("tmp_sample_data","otu"))
+rm(list = c("metaphyseq1","metaphyseq2","metaphyseq3","metaphyseq4","metaphyseq5","metaphyseq6","metaphyseq7","metaphyseq8","metaphyseq9"))
+```
+
+
+```{r Modify sample_data}
+p.true.filt.s <- subset_samples(physeq = p.true.filt.s, sample_sums(p.true.filt.s) > 0)
+sample_data(p.true.filt.s)$sample_side <- ifelse(grepl("pancreas", tolower(meta(p.true.filt.s)$sample_side), fixed = TRUE),"healthy","tumor")
+
+sample_data(p.true.filt.s)$mouse_age_months <- sapply(sample_data(p.true.filt.s)$mouse_age_months, gsub, pattern = ",", replacement= ".")
+sample_data(p.true.filt.s)$mouse_age_months <- sapply(sample_data(p.true.filt.s)$mouse_age, as.numeric)
+
+hist(x = meta(p.true.filt.s)$mouse_age_months)
+
+sample_data(p.true.filt.s)$mouse_age_type <- 0
+sample_data(p.true.filt.s)[which(meta(p.true.filt.s)$mouse_age_months > 5.1),"mouse_age_type"] <- "old"
+#sample_data(p.true.filt.s)[which(meta(p.true.filt.s)$mouse_age_months < 5.6),"mouse_age_type"] <- "middle-aged"
+sample_data(p.true.filt.s)[which(meta(p.true.filt.s)$mouse_age_months < 5.1),"mouse_age_type"] <- "young"
+```
+
+```{r}
+p.true.original
+```
+
+```{r}
+p.true.mod
+```
+```{r}
+p.true.filt
+```
+
+
+```{r}
+p.true.filt.s
+```
+
+```{r TRUE - BrayCurtis - sample side}
+alpha_analysis(p.true.filt.s,i = "sample_side")
+beta_analysis_bray(Phyloseq = p.true.filt.s)
+```
+
+Before using tissue data for further downstream analysis, we firstly need to apply QC (quality control). We remove samples from our tissue set whose read counts are below a given threshold. The respective read counts are too low and do not yield confident presence/absence calls. 
+
+The underlying sequencing machinery is different:
+
+-- Compare setting in Ammer-Herrmenau´s LAB using different Oxford Nanopore products for the different sample types --
+
+We apply the same threshold for our tissue samples as we do for NTC samples. The threshold is given as 100 reads
+
+Overview of raw read counts in tissue samples
+
+```{r}
+Inspect_SequencingDepth(PhyloObj = p.true.filt.s)
+visualize_samples_low_reads(p.true.filt.s,type = "Tissue")
+```
+
+```{r}
+df <- data.frame(sample_side = meta(p.true.filt.s)$sample_side,
+                 id = meta(p.true.filt.s)$id,
+                 barcode = meta(p.true.filt.s)$barcode,
+                 mouse_sex = meta(p.true.filt.s)$mouse_sex,
+                 mouse_age = meta(p.true.filt.s)$mouse_age_months,
+                 nreads = sample_sums(p.true.filt.s),
+                 log2_reads = log2(sample_sums(p.true.filt.s)),
+                 log10_reads = log10(sample_sums(p.true.filt.s)))
+
+df$mouse_age <- sapply(df$mouse_age, gsub, pattern = ",", replacement= ".")
+df$mouse_age <- sapply(df$mouse_age, as.numeric)
+
+ggplot(df,aes(x = nreads)) + geom_histogram() +
+  geom_vline(aes(xintercept=mean(nreads)),color = "blue", linetype = 3, alpha = 3) + 
+  xlab("Number of reads") + ggtitle("Histogram of reads")
+
+df %>% ggplot(aes(x=nreads)) + 
+  geom_density()
+
+df %>% ggplot(aes(x=1, y=nreads)) + 
+  geom_jitter(height = 0) + 
+  scale_y_log10() +
+  geom_hline(yintercept = c(5,20,100,700),color = "red", alpha = 3,linewidth = 0.25) +
+  geom_hline(aes(yintercept=mean(nreads)),color = "blue", linetype = 3,alpha = 4)
+
+df %>% ggplot(aes(x=1, y=nreads)) + 
+  geom_boxplot(outlier.shape = TRUE) +
+  geom_jitter(width = 0) +
+  scale_y_log10() +
+  geom_hline(yintercept = c(5,20,100,700),color = "red", alpha = 3,linewidth = 0.25) +
+  geom_hline(aes(yintercept=mean(nreads)),color = "blue", linetype = 3,alpha = 4)
+
+ggplot(df,aes(x = log10_reads)) + geom_histogram() +
+  geom_vline(aes(xintercept=mean(log10_reads)),color = "blue", linetype = 3,alpha = 4) + 
+  xlab("log10(Number of reads)") + ggtitle("Histogram of reads") +
+  geom_vline(xintercept = c(log10(5),log10(20),log10(100),log10(700)),color = "red", alpha = 3,linewidth = 0.25)
+
+df %>% ggplot(aes(x=log10_reads)) + 
+  geom_density() + 
+  geom_vline(aes(xintercept=mean(log10_reads)),color = "blue", linetype = 3,alpha = 4) +
+  geom_vline(xintercept = c(log10(5),log10(20),log10(100),log10(700)),color = "red", alpha = 3,linewidth = 0.25) 
+
+df %>% ggplot(aes(x=1, y=log10_reads)) + 
+  geom_jitter(height = 0) + 
+  scale_y_log10() +
+  geom_hline(yintercept = c(log10(5),log10(20),log10(100),log10(700)),color = "red", alpha = 3,linewidth = 0.25) +
+  geom_hline(aes(yintercept=mean(log10_reads)),color = "blue", linetype = 3,alpha = 4)
+
+df %>% ggplot(aes(x=1, y=log10_reads)) + 
+  geom_boxplot(outlier.shape = TRUE) +
+  geom_jitter(width = 0) +
+  scale_y_log10() + 
+  geom_hline(yintercept = c(log10(5),log10(20),log10(100),log10(700)),color = "red", alpha = 3,linewidth = 0.25) +
+  geom_hline(aes(yintercept=mean(log10_reads)),color = "blue", linetype = 3,alpha = 4)
+
+df %>% arrange(nreads) %>% ggplot(aes(x=c(1:nrow(df)),y = nreads)) + geom_line() + xlab("Samples")
+
+df %>% arrange(nreads) %>% ggplot(aes(x=c(1:nrow(df)),y = nreads))+ geom_point() + geom_line() + scale_y_log10() + xlab("Samples") + geom_hline(yintercept = c(5,20,100,700),color = "red", alpha = 3,linewidth = 0.25)
+
+
+quantile(x = df$log10_reads, probs = c(0.05,0.1,0.25,0.375,0.5,0.95))
+l <- list(5,20,100,700)
+names(l) <- c(5,20,100,700)
+lapply(l, function(x){log10(x)})
+
+
+rm(l)
+rm(df)
+```
+
+Candidate thresholds are 5, 20, 100, 700.
+
+We will have to set the threshold arbitrarily BUT here are a few questions we can answer for ourselves.
+
+If I set this threshold:
+Q0:
+What is the lowest read count we are comfortable with? 
+A samples needs to surpass a minimal threshold to establish confidence. The actual value of the read counts are not as important for our downstream filtering approach as we utilize filtering methods that work with presence/absence 
+
+Q1: 
+What samples am I going to loose and how much do I care about these samples?
+Paired dataset?
+
+Q2:
+Can we do with the sampling depth we have? Breadth of sampling > depth of sequencing?
+Higher depth of sequencing allows a higher sensitivity for rare taxa.
+
+
+We decide to remove Tissue samples if their read counts are less than 100
+
+```{r}
+bac.count.ntc <- tibble(bac.count = sample_sums(p.true.filt.s), 
+                          sample = sample_data(p.true.filt.s)$id)
+id.ex <- bac.count.ntc %>% filter(bac.count < 100) %>% pull (sample)
+physeq.read.filt <- subset_samples(p.true.filt.s, !(id %in% id.ex))
+physeq.read.filt <- prune_taxa(taxa_sums(physeq.read.filt)>0, physeq.read.filt)
+p.true.filt.s <- physeq.read.filt
+rm(bac.count.ntc)
+rm(id.ex)
+rm(physeq.read.filt)
+```
+
+Now, in Tissue samples, we have *`r nrow(sample_data(p.true.filt.s))`* samples and *`r nrow(otu_table(p.true.filt.s))`* taxa.
+
+```{r}
+p.true.filt.s
+```
+
+
+```{r TRUE - BrayCurtis - sample side}
+alpha_analysis(p.true.filt.s,i = "sample_side")
+beta_analysis_bray(p.true.filt.s)
+```
+
+
+Before using NTC data for further downstream analysis, we firstly need to apply QC (quality control). We remove samples from our NTC set whose read counts are below a given threshold. The respective read counts are too low and do not yield confident presence/absence calls.
+
+Load NTC samples:
+
+### Loading NTC samples
+```{r loading phyloseq "1500.80s ntc samples" objects}
+#loading 1500.80s ntc samples
+physeq.ntc1 <- readRDS("bulk_tumor/2021_02_22_kpc_tum-panc_invitro_ntc/physeq_original.rds")
+physeq.ntc2 <- readRDS("bulk_tumor/2022_03_09_kpc_tum-panc_invitro_ntc/physeq_original.rds")
+
+physeq.nct.original <- merge_phyloseq(physeq.ntc1,physeq.ntc2)
+
+metaphyseq_ntc1 <- read_excel("bulk_tumor/batch_data_phyloseqs/xslx_file/2021_02_22_16s_kpc_tum-panc_invitro_ntc_NEW.xlsx") %>% as.data.frame()#load datasheet as dataframe
+metaphyseq_ntc1 <- metaphyseq_ntc1 %>% mutate(id = paste0(uniqueID,".",sample_side))#create id column
+metaphyseq_ntc1 <- metaphyseq_ntc1 %>% mutate_at(.vars = c("DNAex_round","PCR_round"),function(x) as.character(x))#convert DNAex_round / PCR_round into character values
+
+metaphyseq_nct2 <- read_excel("bulk_tumor/batch_data_phyloseqs/xslx_file/2022_03_09_16s_kpc_tum-panc_invitro_ntc_NEW.xlsx") %>% as.data.frame()#load datasheet as dataframe
+metaphyseq_nct2 <- metaphyseq_nct2 %>% mutate(id = paste0(uniqueID,".",sample_side))#create id column
+metaphyseq_nct2 <- metaphyseq_nct2 %>% mutate_at(.vars = c("DNAex_round","PCR_round"),function(x) as.character(x))#convert DNAex_round / PCR_round into character values
+
+tmp_sample_data_nct <- rbind(metaphyseq_ntc1,metaphyseq_nct2)
+rownames(tmp_sample_data_nct) <- tmp_sample_data_nct$id #When the argument is a data.frame, sample_data will create a sample_data-class object. In this case, the rows should be named to match the sample_names of the other objects to which it will ultimately be paired.
+
+sample_data(physeq.nct.original) <- sample_data(tmp_sample_data_nct)
+
+
+physeq.filt.nct <- subset_taxa(physeq.nct.original, superkingdom=="Bacteria")
+physeq.filt.nct.s <- tax_glom(physeq.filt.nct, taxrank = "species", NArm = TRUE)
+
+rm(list = c("physeq.ntc1", "physeq.ntc2"))
+rm(list = c("tmp_sample_data_nct","metaphyseq_ntc1","metaphyseq_ntc1"))
+rm(physeq.filt.nct)
+```
+
+```{r}
+physeq.nct.original
+```
+
+```{r}
+physeq.filt.nct.s
+```
+
+Before using NCTs for decontamination, we firstly need to remove samples from NCTs whose read counts are low.
+
+Overview of read counts in samples in NCTs
+
+```{r}
+visualize_samples_low_reads(physeq.filt.nct.s)
+```
+
+
+```{r}
+df <- data.frame(sample_side = meta(physeq.filt.nct.s)$sample_side,
+                 nreads = sample_sums(physeq.filt.nct.s),
+                 log2_reads = log2(sample_sums(physeq.filt.nct.s)),
+                 log10_reads = log10(sample_sums(physeq.filt.nct.s)))
+
+df %>% ggplot(aes(x=1, y=nreads)) + 
+  geom_jitter(height = 0) + 
+  scale_y_log10( ) + 
+  geom_hline(yintercept = 10,color = "red")
+
+ggplot(df,aes(x = nreads)) + geom_histogram(color = "black", fill = "white") +
+  geom_vline(aes(xintercept=mean(nreads)),color = "blue", linetype = 3) + 
+  geom_vline(aes(xintercept=10),color = "red", linetype = 1) +
+  xlab("Number of reads") + ggtitle("Histogram of reads")
+
+ggplot(df,aes(x = log2_reads)) + geom_histogram(color = "black", fill = "white") +
+  geom_vline(aes(xintercept=mean(log2_reads)),color = "blue", linetype = 3) + 
+  geom_vline(aes(xintercept=log2(10)),color = "red", linetype = 1) +
+  xlab("log2(Number of reads)") + ggtitle("Histogram of reads")
+rm(df)
+```
+
+
+We decide to remove NCT samples if their read counts are less than 10
+
+```{r}
+bac.count.ntc <- tibble(bac.count = sample_sums(physeq.filt.nct.s), 
+                          sample = sample_data(physeq.filt.nct.s)$id)
+id.ex <- bac.count.ntc %>% filter(bac.count < 10) %>% pull (sample)
+physeq.read.filt <- subset_samples(physeq.filt.nct.s, !(id %in% id.ex))
+physeq.read.filt <- prune_taxa(taxa_sums(physeq.read.filt)>0, physeq.read.filt)
+physeq.filt.nct.s <- physeq.read.filt
+rm(bac.count.ntc)
+rm(id.ex)
+rm(physeq.read.filt)
+```
+
+Now, in NTC samples, we have *`r nrow(sample_data(physeq.filt.nct.s.1500.80))`* samples and *`r nrow(otu_table(physeq.filt.nct.s.1500.80))`* taxa.
+
+```{r}
+physeq.filt.nct.s
+```
+
+
+#OTU unification
+
+We have 2 phyloseq objects that may describe the same species using different OTU handles. We therefore unify the OTU handles for an easier downstream analysis.
+
+### Merge TRUE/NCT samples
+```{r merge true/nct samples}
+p.comb.filt.s <- merge_phyloseq(p.true.filt.s,physeq.filt.nct.s) # merge the phyloseq objects containing true samples (p.true.filt.s.1500.80) and nct samples (physeq.filt.nct.s.1500.80)
+p.comb.filt.s <- tax_glom(p.comb.filt.s,taxrank = "species", NArm = TRUE) # agglomerate taxa to species level. This combines different OTUs {hypothecially: 450 / 453} assigned to the same species into just 1 OTU
+sample_data(p.comb.filt.s)$is.neg <- sample_data(p.comb.filt.s)$TRUE_control == "control"#first identify your negative controls -> decontam!
+```
+
+```{r TRUE - BrayCurtis - sample side}
+alpha_analysis(p.comb.filt.s,i = "TRUE_control")
+beta_analysis_bray(p.comb.filt.s,i = "TRUE_control")
+```
+
+## DEMERGE!
+```{r}
+p.true.filt.s.unify <- subset_samples(p.comb.filt.s,TRUE_control=="TRUE") #only true samples
+p.true.filt.s.unify <- prune_taxa(x = p.true.filt.s.unify,taxa = taxa_names(p.true.filt.s.unify)[taxa_sums(p.true.filt.s.unify)>0]) #only taxa found in true samples
+
+p.true.filt.s.unify
+
+physeq.filt.nct.s.unify <- subset_samples(p.comb.filt.s,TRUE_control == "control") #only NCT samples
+physeq.filt.nct.s.unify <- prune_taxa(x = physeq.filt.nct.s.unify,taxa = taxa_names(physeq.filt.nct.s.unify)[taxa_sums(physeq.filt.nct.s.unify)>0]) #only taxa found in NCT samples
+
+physeq.filt.nct.s.unify
+rm(p.comb.filt.s)
+```
+### Low read count filtering 
+In this step, we remove all taxa in true samples that do not pass our "noise" filter.
+```{r}
+p.true.RmLowRead.man <- filter_by_low_readcount(phyloseqObj = p.true.filt.s.unify,threshold =1 ,A = 1)
+```
+
+### Low abundance filtering (Step 3)
+
+In this step, we remove all taxas in true samples whose abundance are low (eg. \<10\^-4) in atleast 1 sample
+```{r}
+p.true.RmLowAbun.man <- filter_by_low_abundance(phyloseqObj = p.true.RmLowRead.man,threshold =0.0001 ,A = 1)
+```
+
+```{r}
+p.true.RmLowAbun.man
+```
+
+First of all, let us check the taxa overlap between NCT samples and true sample after low-abundance filtering by rule of thumb.
+
+```{r}
+PlotVenn2Sets(taxa_names(p.true.RmLowAbun.man) %>% unique(),
+              taxa_names(physeq.filt.nct.s.unify) %>% unique(),
+              "True Samples" , "NCT Samples ")
+```
+
+```{r TRUE - BrayCurtis - sample side}
+alpha_analysis(p.true.RmLowAbun.man,i = "sample_side")
+beta_analysis_bray(p.true.RmLowAbun.man)
+```
+
+There are `r setdiff(taxa_names(physeq.filt.nct.s.unify), taxa_names(p.true.RmLowAbun.man)) %>% length()` taxa belong to NCT samples but not in true samples (after rule of thumb). They are obvious contamination.
+
+Instead of Decontam R package, we follow procedure of Nejman et al..
+
+# Nejman
+
+#### High prevalence taxas in NCTs
+
+We consider all taxas whose prevalence in NCTs are higher than a certain threshold (eg. 30%) are contaminants.
+
+In order to determine that threshold, we have a look at the plot below
+
+```{r}
+xout <- HighPrevalence_Data(p.true.RmLowAbun.man, physeq.filt.nct.s.unify)
+plot(xout$factorx, xout$rel_tax, xlab="prevalence in NCT samples", ylab="proportion of tax in true samples")
+```
+
+This plot shows us how many percents of taxa we would remove from true samples (y-axis) if we pick up a threshold for high prevalence in NCT samples (x-axis).
+
+From this plot, a threshold 0.425 would be fine.
+
+
+```{r}
+filter <- 0.425
+filtered_taxa1 <- tibble(
+  Cont = genefilter_sample(physeq.filt.nct.s.unify, filterfun_sample(function(x) x > 0), A=filter*nsamples(physeq.filt.nct.s.unify)),
+  OTU = names(genefilter_sample(physeq.filt.nct.s.unify, filterfun_sample(function(x) x > 0), A=filter*nsamples(physeq.filt.nct.s.unify)))
+) %>% 
+  arrange (-Cont)
+cont.count <- filtered_taxa1 %>% dplyr::count(Cont) 
+cont.count %>% 
+  kable (caption=paste("Count of contaminants (filter", filter*100, " %)"), booktabs =TRUE) %>%
+  kable_classic(full_width = F, html_font = "Cambria") %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive")) 
+```
+
+The list of contaminants determined by high prevalence in NCTs given threshold
+
+```{r}
+df.fam.melt <- psmelt(physeq.filt.nct.s.unify)
+df.fam.melt %>% select(OTU, species) %>% 
+  unique %>% 
+  right_join(filtered_taxa1) %>% 
+  filter(Cont == TRUE) %>% 
+  select(-Cont) %>% 
+  kable (caption=paste("Contaminants (filter", filter*100, " %)"), booktabs =TRUE) %>%
+  kable_classic(full_width = F, html_font = "Cambria") %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive")) %>% 
+  scroll_box(width = "70%", height = "600px")
+```
+
+We now remove those taxa which have high prevalence in NTC samples out of true samples
+
+```{r}
+p.true.RmLowAbun.RmHighPrev.man <- prune_taxa(setdiff(taxa_names(p.true.RmLowAbun.man),filtered_taxa1[filtered_taxa1$Cont==TRUE,] %>% pull("OTU")), p.true.RmLowAbun.man)
+```
+
+```{r}
+p.true.RmLowAbun.RmHighPrev.man
+```
+
+Now we have *`r nrow(sample_data(p.true.RmLowAbun.RmHighPrev.man))`* true samples and *`r nrow(otu_table(p.true.RmLowAbun.RmHighPrev.man))`* taxa. In NCTs, we have *`r nrow(sample_data(physeq.filt.nct.s.unify))`* control samples and *`r nrow(otu_table(physeq.filt.nct.s.unify))`* taxa.
+
+The Venn diagram of taxa between true samples and NCTs is now
+
+```{r}
+PlotVenn2Sets(rownames(otu_table(p.true.RmLowAbun.RmHighPrev.man)), rownames(otu_table(physeq.filt.nct.s.unify)), "True samples", "NCT sample")
+```
+
+```{r TRUE - BrayCurtis - sample side}
+alpha_analysis(p.true.RmLowAbun.RmHighPrev.man,i = "sample_side")
+beta_analysis_bray(p.true.RmLowAbun.RmHighPrev.man)
+```
+
+#### Binomial test
+```{r}
+#merge sample_data
+metadata_true <- meta(p.true.RmLowAbun.RmHighPrev.man)
+metadata_nct <- meta(physeq.filt.nct.s.unify)
+metadata <- rbind(metadata_true,metadata_nct)
+
+metadata <- metadata %>% mutate(sample_type = ifelse(grepl("paraffin", tolower(sample_side), fixed = TRUE),"paraffin",
+                                         ifelse(grepl("buffer", tolower(sample_side), fixed = TRUE),"buffer",
+                                                ifelse(grepl("pcr", tolower(sample_side), fixed = TRUE),"pcr_ctrl", "true_sample"))))
+
+p.comb.filt <- merge_phyloseq(p.true.RmLowAbun.RmHighPrev.man,physeq.filt.nct.s.unify)
+p.comb.filt.s <- tax_glom(p.comb.filt,taxrank = "species")
+rm(p.comb.filt)
+```
+
+```{r}
+p <- p.true.RmLowAbun.RmHighPrev.man #dummy phyloseq as code is work in progress
+p.true.RmLowAbun.RmHLPrev.man <- Wrapper_Nejman(p.true.RmLowAbun.RmHighPrev.man,physeq.filt.nct.s.unify,metadata,x = p)
+p.true.RmLowAbun.RmHLPrev.man
+```
+
+The Venn diagram of taxa between true samples and NCTs is now
+
+```{r}
+PlotVenn2Sets(rownames(otu_table(p.true.RmLowAbun.RmHLPrev.man)), rownames(otu_table(physeq.filt.nct.s.unify)), "True samples", "NCT sample")
+```
+
+```{r}
+#remove samples without bacteria
+p.true.RmLowAbun.RmHLPrev.man <- subset_samples(physeq = p.true.RmLowAbun.RmHLPrev.man, sample_sums(p.true.RmLowAbun.RmHLPrev.man) > 0)
+```
+
+
+```{r TRUE - BrayCurtis - sample side}
+alpha_analysis(p.true.RmLowAbun.RmHLPrev.man,i = "sample_side")
+beta_analysis_bray(p.true.RmLowAbun.RmHLPrev.man)
+```
+
+#Prevalence
+```{r}
+prevdf <- data.frame(Prevalence = prevalence(x = p.true.RmLowAbun.RmHLPrev.man,detection = 0,count = TRUE), 
+                     TotalAbundance = taxa_sums(p.true.RmLowAbun.RmHLPrev.man),
+                     tax_table(p.true.RmLowAbun.RmHLPrev.man))
+#Prevalence: in how many tissue samples do our species appear
+#TotalAbundance: sum of read counts for a species in all samples
+#tax_table from the phyloseq object in use
+```
+
+```{r}
+ggplot(prevdf, aes(TotalAbundance, Prevalence/nsamples(p.true.RmLowAbun.RmHLPrev.man),color = order))+ geom_hline(yintercept = 0.05, alpha=0.5,linetype=2)+
+  geom_hline(yintercept = 0.5, alpha=0.5,linetype=2)+
+  geom_point(size=2,alpha=0.6)+ scale_x_log10()+xlab("TotalAbundance")+
+  ylab("Prevalence as Fraction of Samples")+facet_wrap(~order)+theme(legend.position = "none")
+```
+# Differential Abundance
+```{r}
+library("DESeq2");packageVersion("DESeq2")
+p.true.RmLowAbun.RmHLPrev.man <- prune_samples(x = p.true.RmLowAbun.RmHLPrev.man,sample_sums(p.true.RmLowAbun.RmHLPrev.man) >0)
+
+DESeq2_obj <- phyloseq_to_deseq2(p.true.RmLowAbun.RmHLPrev.man, ~ sample_side)
+#calculate geometric means prior to estimate size factor to avaid error msg
+gm_mean = function(x, na.rm = TRUE){
+  exp(sum(log(x[x>0]), na.rm = na.rm)/length(x))
+}
+geoMeans = apply(counts(DESeq2_obj),1,gm_mean)
+side_dds = estimateSizeFactors(DESeq2_obj,geoMeans = geoMeans)
+side_dds <- DESeq(side_dds,fitType = "local")
+
+res <- results(object = side_dds,cooksCutoff = FALSE)
+alpha = 0.05
+res$padj[is.na(res$padj)] <- 1
+sigtab <- res[(res$padj < alpha),]
+sigtab <- cbind(as(object = sigtab,Class = "data.frame"), as(tax_table(p.true.RmLowAbun.RmHLPrev.man)[rownames(sigtab),],"matrix"))
+head(sigtab)
+
+posingtab = sigtab[sigtab[,"log2FoldChange"] > 0,]
+posingtab = posingtab[,c("baseMean","log2FoldChange","lfcSE","padj","phylum","class","order","family","genus","species")]
+
+library(ggplot2)
+theme_set(theme_bw())
+sigtabgen = subset(sigtab, !is.na(species))
+# Order order
+x = tapply(sigtabgen$log2FoldChange, sigtabgen$order, function(x) max(x))
+x = sort(x, TRUE)
+sigtabgen$order = factor(as.character(sigtabgen$order), levels=names(x))
+# species order
+x = tapply(sigtabgen$log2FoldChange, sigtabgen$species, function(x) max(x))
+x = sort(x, TRUE)
+sigtabgen$species = factor(as.character(sigtabgen$species), levels=names(x))
+dim(sigtabgen)
+ggplot(sigtabgen, aes(y=order, x=log2FoldChange, color=genus)) + 
+  geom_vline(xintercept = 0.0, color = "gray", size = 0.5) +
+  geom_point(size=6) + 
+  theme(axis.text.x = element_text(angle = -90, hjust = 0, vjust=0.5))
+```
+
+
+```{r}
+varianceStabilizingTransformation(side_dds) -> vST_true
+```
+
+
+### Decontam
+
+```{r}
+p.comb.filt <- merge_phyloseq(p.true.RmLowAbun.RmHLPrev.man,physeq.filt.nct.s.unify)
+p.comb.filt.s <- tax_glom(p.comb.filt,taxrank = "species")
+rm(p.comb.filt)
+```
+
+
+```{r}
+noncontamdf.prev <- isNotContaminant(p.comb.filt.s, method = "prevalence", neg ="is.neg",threshold = 0.37,detailed = TRUE)
+#threshold of 0.5 classifies all taxa present in more negative controls then tisse samples as contaminant
+#intersting would be the comparison of this classification and our NEJMAN derived classification method
+noncontamdf.prev %>% 
+  ggplot(aes(x = p)) + geom_histogram(color = "black",fill = "white") +
+  geom_vline(aes(xintercept=0.37),color = "blue", linetype = 3, alpha = 3) + 
+  xlab("p") + ggtitle("Histogram")
+```
+
+```{r}
+p.comb.filt.s.r <- prune_taxa(taxa = taxa_names(p.comb.filt.s)[(noncontamdf.prev$not.contaminant)],x = p.comb.filt.s)
+p.true.RmLowAbun.RmHLPrev.man.r <- subset_samples(p.comb.filt.s.r,TRUE_control=="TRUE")
+```
+
+Now we have *`r nrow(sample_data(p.true.RmLowAbun.RmHLPrev.man.r))`* true samples and *`r nrow(otu_table(p.true.RmLowAbun.RmHLPrev.man.r))`* taxa. In NCTs, we have *`r nrow(sample_data(physeq.filt.nct.s.unify))`* control samples and *`r nrow(otu_table(physeq.filt.nct.s.unify))`* taxa.
+
+The Venn diagram of taxa between true samples and NCTs is now
+
+```{r}
+PlotVenn2Sets(rownames(otu_table(p.true.RmLowAbun.RmHLPrev.man.r)), rownames(otu_table(physeq.filt.nct.s.unify)), "True samples", "NCT sample")
+```
+
+We see a large decrease in taxa present in just True samples. Compare 671 taxa found only in true samples after applying decontam with 1185 taxa found in only true samples before applying decontam
+
+```{r TRUE - BrayCurtis - sample side}
+alpha_analysis(p.true.RmLowAbun.RmHLPrev.man.r,i = "sample_side")
+beta_analysis_bray(p.true.RmLowAbun.RmHLPrev.man.r)
+```
+
+
+```{r}
+Inspect_SequencingDepth(p.true.RmLowAbun.RmHLPrev.man.r)
+```
+
+#Prevalence
+```{r}
+prevdf <- data.frame(Prevalence = prevalence(x = p.true.RmLowAbun.RmHLPrev.man.r,detection = 0,count = TRUE), 
+                     TotalAbundance = taxa_sums(p.true.RmLowAbun.RmHLPrev.man.r),
+                     tax_table(p.true.RmLowAbun.RmHLPrev.man.r))
+#Prevalence: in how many tissue samples do our species appear
+#TotalAbundance: sum of read counts for a species in all samples
+#tax_table from the phyloseq object in use
+```
+
+```{r}
+ggplot(prevdf, aes(TotalAbundance, Prevalence/nsamples(p.true.RmLowAbun.RmHLPrev.man.r),color = order))+ geom_hline(yintercept = 0.05, alpha=0.5,linetype=2)+
+  geom_hline(yintercept = 0.5, alpha=0.5,linetype=2)+
+  geom_point(size=2,alpha=0.6)+ scale_x_log10()+xlab("TotalAbundance")+
+  ylab("Prevalence as Fraction of Samples")+facet_wrap(~order)+geom_smooth()+ theme(legend.position = "none")
+```
+
+
+```{r}
+library("DESeq2");packageVersion("DESeq2")
+p.true.RmLowAbun.RmHLPrev.man.r <- prune_samples(x = p.true.RmLowAbun.RmHLPrev.man.r,sample_sums(p.true.RmLowAbun.RmHLPrev.man.r) >0)
+
+DESeq2_obj <- phyloseq_to_deseq2(p.true.RmLowAbun.RmHLPrev.man.r, ~ sample_side)
+#calculate geometric means prior to estimate size factor to avaid error msg
+gm_mean = function(x, na.rm = TRUE){
+  exp(sum(log(x[x>0]), na.rm = na.rm)/length(x))
+}
+geoMeans = apply(counts(DESeq2_obj),1,gm_mean)
+side_dds = estimateSizeFactors(DESeq2_obj,geoMeans = geoMeans)
+side_dds <- DESeq(side_dds,fitType = "local")
+
+res <- results(object = side_dds,cooksCutoff = FALSE)
+alpha = 0.05
+res$padj[is.na(res$padj)] <- 1
+sigtab <- res[(res$padj < alpha),]
+sigtab <- cbind(as(object = sigtab,Class = "data.frame"), as(tax_table(p.true.RmLowAbun.RmHLPrev.man.r)[rownames(sigtab),],"matrix"))
+head(sigtab)
+
+posingtab = sigtab[sigtab[,"log2FoldChange"] > 0,]
+posingtab = posingtab[,c("baseMean","log2FoldChange","lfcSE","padj","phylum","class","order","family","genus","species")]
+
+library(ggplot2)
+theme_set(theme_bw())
+sigtabgen = subset(sigtab, !is.na(species))
+# Order order
+x = tapply(sigtabgen$log2FoldChange, sigtabgen$order, function(x) max(x))
+x = sort(x, TRUE)
+sigtabgen$order = factor(as.character(sigtabgen$order), levels=names(x))
+# species order
+x = tapply(sigtabgen$log2FoldChange, sigtabgen$species, function(x) max(x))
+x = sort(x, TRUE)
+sigtabgen$species = factor(as.character(sigtabgen$species), levels=names(x))
+dim(sigtabgen)
+ggplot(sigtabgen, aes(y=order, x=log2FoldChange, color=genus)) + 
+  geom_vline(xintercept = 0.0, color = "gray", size = 0.5) +
+  geom_point(size=6) + 
+  theme(axis.text.x = element_text(angle = -90, hjust = 0, vjust=0.5))
+```

@@ -1,0 +1,3010 @@
+---
+title: "Patho FFPE human tumor vs. normal pancreas (AS1000Cov50, physeq_original)"
+author: "Christoph & Christoph"
+date: "Report created: `r Sys.Date()`"
+output: 
+  html_document:
+    toc: true
+    toc_float: true
+    code_folding: hide
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+```
+
+In this experiment, human tumor vs. normal pancreas FFPE tissue samples from the Pathology department are examined. The DNA had been isolated with the Invitrogen FFPE kit (by me). The sample size is n=24 for both tumor and normal pancreas (matched patients). Additionally, n=6 FFPE tumor tissue samples from the establishment experiment (patho_ffpe_self) without matched normal pancreas tissue are implemented (so we have n=30 tumor, n=24 normal pancreas). n=75 NTCs (n=23 paraffin tumor, n=24 paraffin normal, n=10 buffer-only, n=7 PCR CTRLs) plus n=11 NTCs from the establishment experiment (patho_ffpe_self) are implemented. Further, several samples <1000 reads were repeated and implemented as well (merge with their first sequencing). 
+
+```{r, echo=FALSE}
+library(PERFect)
+library(phyloseq)
+library(decontam)
+library(tidyverse)
+library(pairwiseAdonis)
+library(kableExtra)
+library(vegan)
+library(tidytree)
+library(ape)
+library(ggrepel)
+library(microbiome)
+library(ggpubr) # for manual p-value assigning
+library(rstatix) # for wilcox test
+# setwd("C:/Users/Christoph/Dropbox/nina_analysis/patho_ffpe_total")
+```
+
+# Combining Phyloseq objects {.tabset}
+
+## Loading all physeq-objects (AS1000Cov50, physeq_original)  
+
+Run by run was separately analysed and a phyloseq object per run was created. By using a barplot for microbial composition and the beta diversity (weighted UF) outliers are detected per each run. Every outlier is categorized and a reason is described, why we identify this sample as an outlier. 
+
+CAH:
+
+```{r}
+physeq1 <- readRDS("../raw_data/PhyloSeqObj/2022_05_27_patho_FFPE_tum_panc_1/physeq_original_50.rds")
+physeq2 <- readRDS("../raw_data/PhyloSeqObj/2022_05_27_patho_FFPE_tum_panc_2/physeq_original_50.rds")
+physeq3 <- readRDS("../raw_data/PhyloSeqObj/2022_05_28_patho_FFPE_tum_panc_3/physeq_original_50.rds")
+physeq4 <- readRDS("../raw_data/PhyloSeqObj/2022_05_28_patho_FFPE_tum_panc_4/physeq_original_50.rds")
+physeq5 <- readRDS("../raw_data/PhyloSeqObj/2021_12_01_patho_FFPE_self_tumor/physeq_original.rds")
+
+# sample_data(physeq1)
+# sample_data(physeq2)
+# sample_data(physeq3)
+# sample_data(physeq4)
+
+p.true.original <- merge_phyloseq(physeq1,physeq2,physeq3,physeq4, physeq5)
+
+```
+
+Now, we have **`r nrow(sample_data(p.true.original))` samples and `r nrow(otu_table(p.true.original))` taxa**. 
+
+
+## Implementing additional phyloseq objects (repeaters)
+
+09.08.22: rep1: 10 samples (tumor+normal panc mixed)
+09.08.22: rep2: 10 samples (tumor+normal panc mixed)
+
+```{r}
+physeq6 <- readRDS("../raw_data/PhyloSeqObj/2022_08_09_patho_FFPE_tum_panc_rep1/physeq_original_50.rds")
+physeq7 <- readRDS("../raw_data/PhyloSeqObj/2022_08_09_patho_FFPE_tum_panc_rep2/physeq_original_50.rds")
+ 
+p.true.original <- merge_phyloseq(p.true.original,physeq6,physeq7)
+
+```
+
+Now, we have **`r nrow(sample_data(p.true.original))` samples and `r nrow(otu_table(p.true.original))` taxa**.
+
+# Normalization {.tabset}
+
+## Overview 
+
+In order to normalize the data we use used 5 methods:  
+
+1. Filtering for bacterial reads
+2. Deleting all taxIDs without resolution to species level (tax_glom)  
+3. Prevalence filtering (PERfect package)  
+4. Decontamination (decontam package)    
+5. Rarefaction (phyloseq package)   
+
+
+The first one was already applied during "phyloseq-object-creation" for every single run. Hereby, less abundant taxa were considered as technical/ bioinformatical mistakes rather than true species. The underlying algorithm was the simultanous method. Here we apply the PERfect packge again to eliminate more taxa.  
+
+To decontaminate the TRUE samples decontam is applied. The Negative controls derived from DNA-extraction (blank swab medium was extracted) and library preparation for both approaches (16S rRNA and metagenomics).  
+
+Due to different sequencing depth all samples have to be rarified. To this end rarefaction is used. Details below. Before we filtering all reads which do not contain bacterial reads (also already done in "phyloseq-object-creation"). Furthermore all TaxIDs are removed which do not have a resolution until species level (also already done in "phyloseq-object-creation"). Step 3-4 are conducted to have all normalization steps included, though their impact of the data is 0, because they were done before.
+
+## Filtering
+
+```{r}
+p.true.filt <- subset_taxa(p.true.original, superkingdom=="Bacteria")
+p.true.filt.s <- tax_glom(p.true.filt, taxrank = "species", NArm = TRUE)
+```
+
+Now we have `r nrow(sample_data(p.true.filt.s))` samples and `r nrow(otu_table(p.true.filt.s))` taxa.
+
+
+## Prevalence filtering
+
+```{r}
+otu = as(otu_table(p.true.filt.s), "matrix")
+if(taxa_are_rows(p.true.filt.s)){otu <- t(otu)}
+otu = as_tibble(otu)
+res_sim <- PERFect_sim(X = otu)
+dim(res_sim$filtX)
+ids.sim<- colnames(res_sim$filtX) 
+p.true.filt.s.prev <-  prune_taxa(ids.sim, p.true.filt.s)
+```
+
+Now we have `r nrow(sample_data(p.true.filt.s.prev))` samples and `r nrow(sample_data(p.true.filt.s.prev))` taxa. 
+
+
+## Decontam {.tabset}
+
+The negative controls are merged and all three steps of the normalization process are performed as well.
+
+```{r}
+physeq.nct1 <- readRDS("../raw_data/PhyloSeqObj/2022_06_02_patho_FFPE_tum_panc_ntc_1/physeq_original_50.rds")
+physeq.nct2 <- readRDS("../raw_data/PhyloSeqObj/2022_06_02_patho_FFPE_tum_panc_ntc_2/physeq_original_50.rds")
+physeq.nct3 <- readRDS("../raw_data/PhyloSeqObj/2022_06_03_patho_FFPE_tum_panc_ntc_3/physeq_original_50.rds")
+physeq.nct4 <- readRDS("../raw_data/PhyloSeqObj/2022_06_03_patho_FFPE_tum_panc_ntc_4/physeq_original_50.rds")
+physeq.nct5 <- readRDS("../raw_data/PhyloSeqObj/2022_06_04_patho_FFPE_tum_panc_ntc_5/physeq_original_50.rds")
+physeq.nct6 <- readRDS("../raw_data/PhyloSeqObj/2022_06_04_patho_FFPE_tum_panc_ntc_6/physeq_original_50.rds")
+physeq.nct7 <- readRDS("../raw_data/PhyloSeqObj/2022_06_10_patho_FFPE_tum_panc_ntc_7/physeq_original_50.rds")
+physeq.nct8 <- readRDS("../raw_data/PhyloSeqObj/2022_07_13_patho_FFPE_tum_panc_ntc_8/physeq_original_50.rds")
+physeq.nct9 <- readRDS("../raw_data/PhyloSeqObj/2022_07_13_patho_FFPE_tum_panc_ntc_9/physeq_original_50.rds")
+physeq.nct10 <- readRDS("../raw_data/PhyloSeqObj/2021_12_02_patho_FFPE_self_ntc/physeq_original.rds")
+physeq.nct11 <- readRDS("../raw_data/PhyloSeqObj/2022_01_24_patho_FFPE_self_ntc_2/physeq_original.rds")
+
+
+physeq.nct.original <- merge_phyloseq(physeq.nct1, physeq.nct2, physeq.nct3, physeq.nct4, physeq.nct5, physeq.nct6, physeq.nct7, physeq.nct8, physeq.nct9,physeq.nct10, physeq.nct11)
+
+
+physeq.filt.nct <- subset_taxa(physeq.nct.original, superkingdom=="Bacteria")
+physeq.filt.nct.s <- tax_glom(physeq.filt.nct, taxrank = "species", NArm = TRUE)
+
+# otu = as(otu_table(physeq.filt.nct.s), "matrix")
+# if(taxa_are_rows(physeq.filt.nct.s)){otu <- t(otu)}
+# otu = as_tibble(otu)
+# res_sim <- PERFect_sim(X = otu)
+# dim(res_sim$filtX)
+# ids.sim<- colnames(res_sim$filtX)
+# physeq.filt.nct.s.prev <-  prune_taxa(ids.sim, physeq.filt.nct.s)
+
+physeq.filt.combined <- merge_phyloseq(p.true.filt.s.prev, physeq.filt.nct.s)
+sample_data(physeq.filt.combined)$is.neg <- sample_data(physeq.filt.combined)$TRUE_control == "control"#first identify your negative controls 
+```
+
+Now we have `r nrow(sample_data(physeq.filt.combined))` samples and `r nrow(otu_table(physeq.filt.combined))` taxa. 
+
+
+### Inspect the library size
+
+The following plots show the library size, whereas the point color separate negative controls and TRUE samples.
+
+```{r}
+df <- as.data.frame(sample_data(physeq.filt.combined)) # Put sample_data into a ggplot-friendly data.frame
+
+true_count <- as_tibble(sample_data(physeq.filt.combined)) %>% filter(TRUE_control == "TRUE") %>% count(TRUE_control) %>% pull(n)
+control_count <- as_tibble(sample_data(physeq.filt.combined)) %>% filter(TRUE_control == "control") %>% count(TRUE_control) %>% pull(n)
+
+df$LibrarySize <- sample_sums(physeq.filt.combined)
+df <- df[order(df$LibrarySize),]
+df$Index <- seq(nrow(df))
+ggplot(data=df, aes(x=Index, y=LibrarySize, color=TRUE_control)) + geom_point()  + theme_bw() + ggtitle("Library size")+
+  scale_color_brewer(palette = "Set1", labels=c(paste("Negative controls\nn =", control_count, sep = " "), paste("Tissue samples\nn =", true_count, sep = " ")))+
+  theme (axis.text=element_text(size=14),
+        axis.title=element_text(size=16,face="bold"),
+        legend.text = element_text(size = 12),
+        legend.title = element_blank())
+```
+
+### Beta diversity negativ controls vs true samples
+
+```{r}
+phy_tree = rtree(ntaxa(physeq.filt.combined), rooted=TRUE, tip.label=taxa_names(physeq.filt.combined))
+physeq.filt.combined  <- merge_phyloseq(physeq.filt.combined , phy_tree)
+
+uf_dist = phyloseq::distance(physeq.filt.combined, method="unifrac", weighted=F)
+uf_ordination = ordinate(physeq.filt.combined, method="PCoA", distance=uf_dist)
+
+true_count <- meta(physeq.filt.combined) %>%
+  filter(TRUE_control == "TRUE") %>%
+  count(TRUE_control) %>%
+  pull(n)
+control_count <- as_tibble(sample_data(physeq.filt.combined)) %>% filter(TRUE_control == "control") %>% count(TRUE_control) %>% pull(n)
+
+pcoa1 <- paste("PCoA 1", " [", round(uf_ordination[[3]]$Relative_eig[1], digits = 3)*100, "%]", sep = "")
+pcoa2 <- paste("PCoA 2", " [", round(uf_ordination[[3]]$Relative_eig[2], digits = 3)*100, "%]", sep = "")
+
+set.seed(40)
+p.adonis <- adonis2(uf_dist ~ sample_data(physeq.filt.combined)$TRUE_control)
+
+p <- case_when(
+  p.adonis$`Pr(>F)`[1] > 0.05 ~ "n.s.",
+  p.adonis$`Pr(>F)`[1] < 0.05 &  p.adonis$`Pr(>F)`[1] > 0.01 ~ paste(p.adonis$`Pr(>F)`[1], "*", sep = " "),
+  p.adonis$`Pr(>F)`[1] <= 0.01 & p.adonis$`Pr(>F)`[1] > 0.001  ~ paste(p.adonis$`Pr(>F)`[1], "**", sep = " "),
+  p.adonis$`Pr(>F)`[1] <= 0.001 ~ paste(p.adonis$`Pr(>F)`[1], "***", sep = " "),
+)
+annotations <- data.frame(
+        xpos = c(-Inf),
+        ypos =  c(Inf),
+        annotateText = p,
+        hjustvar = c(-0.2) ,
+        vjustvar = c(1.5))
+
+plot_ordination(physeq.filt.combined, uf_ordination, color="TRUE_control") +
+  geom_point(aes(colour=TRUE_control), size=3) +
+  theme(aspect.ratio=1) +
+  theme_bw()+
+ scale_color_brewer(palette = "Set1", labels=c(paste("Tissue samples\nn =", true_count, sep = " "), paste("Negative controls\nn =", control_count, sep = " ")))+
+  stat_ellipse() +
+  # xlab(pcoa1)+
+  # ylab(pcoa2)+
+  theme(panel.grid =  element_blank())+
+  ggtitle("Differences Negative controls and True samples - Unweighted UF - Not rarified") +
+  theme (axis.text=element_text(size=14),
+         axis.title=element_text(size=16,face="bold"))+
+  theme(
+        # legend.justification=c(1.15,-0.15), legend.position=c(1,0),
+        legend.text = element_text(size = 12),
+        legend.title = element_blank())+
+  geom_text(data=annotations,aes(x=xpos,y=ypos,hjust=hjustvar,vjust=vjustvar,label=annotateText), inherit.aes = FALSE)
+
+
+bray_dist = phyloseq::distance(physeq.filt.combined, method="bray")
+bc_ordination = ordinate(physeq.filt.combined, method="PCoA", distance=bray_dist)
+
+true_count <- as_tibble(sample_data(physeq.filt.combined)) %>% filter(TRUE_control == "TRUE") %>% count(TRUE_control) %>% pull(n)
+control_count <- as_tibble(sample_data(physeq.filt.combined)) %>% filter(TRUE_control == "control") %>% count(TRUE_control) %>% pull(n)
+
+pcoa1 <- paste("PCoA 1", " [", round(bc_ordination[[3]]$Relative_eig[1], digits = 3)*100, "%]", sep = "")
+pcoa2 <- paste("PCoA 2", " [", round(bc_ordination[[3]]$Relative_eig[2], digits = 3)*100, "%]", sep = "")
+
+set.seed(40)
+p.adonis <- adonis2(bray_dist ~ sample_data(physeq.filt.combined)$TRUE_control)
+
+p <- case_when(
+  p.adonis$`Pr(>F)`[1] > 0.05 ~ "n.s.",
+  p.adonis$`Pr(>F)`[1] < 0.05 &  p.adonis$`Pr(>F)`[1] > 0.01 ~ paste(p.adonis$`Pr(>F)`[1], "*", sep = " "),
+  p.adonis$`Pr(>F)`[1] <= 0.01 & p.adonis$`Pr(>F)`[1] > 0.001  ~ paste(p.adonis$`Pr(>F)`[1], "**", sep = " "),
+  p.adonis$`Pr(>F)`[1] <= 0.001 ~ paste(p.adonis$`Pr(>F)`[1], "***", sep = " "),
+)
+annotations <- data.frame(
+        xpos = c(-Inf),
+        ypos =  c(Inf),
+        annotateText = p,
+        hjustvar = c(-0.2) ,
+        vjustvar = c(1.5))
+
+plot_ordination(physeq.filt.combined, bc_ordination, color="TRUE_control") +
+  geom_point(aes(colour=TRUE_control), size=3) +
+  theme(aspect.ratio=1) +
+  theme_bw()+
+ scale_color_brewer(palette = "Set1", labels=c(paste("Tissue samples\nn =", true_count, sep = " "), paste("Negative controls\nn =", control_count, sep = " ")))+
+  stat_ellipse() +
+  xlab(pcoa1)+
+  ylab(pcoa2)+
+  theme(panel.grid =  element_blank())+
+  ggtitle("Differences Negative controls and True samples - Bray curtis - Not rarified") +
+  theme (axis.text=element_text(size=14),
+         axis.title=element_text(size=16,face="bold"))+
+  theme(
+        # legend.justification=c(1.15,-0.15), legend.position=c(1,0),
+        legend.text = element_text(size = 12),
+        legend.title = element_blank())+
+  geom_text(data=annotations,aes(x=xpos,y=ypos,hjust=hjustvar,vjust=vjustvar,label=annotateText), inherit.aes = FALSE)
+
+# rarified samples
+
+sample.size <- 1000
+seed <- 711
+physeq.filt.combined2 <- rarefy_even_depth(physeq = physeq.filt.combined, sample.size = sample.size, rngseed = seed)
+
+true_count <- as_tibble(sample_data(physeq.filt.combined2)) %>% filter(TRUE_control == "TRUE") %>% count(TRUE_control) %>% pull(n)
+control_count <- as_tibble(sample_data(physeq.filt.combined2)) %>% filter(TRUE_control == "control") %>% count(TRUE_control) %>% pull(n)
+
+bray_dist = phyloseq::distance(physeq.filt.combined2, method="bray")
+bc_ordination = ordinate(physeq.filt.combined2, method="PCoA", distance=bray_dist)
+
+pcoa1 <- paste("PCoA 1", " [", round(bc_ordination[[3]]$Relative_eig[1], digits = 3)*100, "%]", sep = "")
+pcoa2 <- paste("PCoA 2", " [", round(bc_ordination[[3]]$Relative_eig[2], digits = 3)*100, "%]", sep = "")
+
+set.seed(40)
+p.adonis <- adonis2(bray_dist ~ sample_data(physeq.filt.combined2)$TRUE_control)
+
+p <- case_when(
+  p.adonis$`Pr(>F)`[1] > 0.05 ~ "n.s.",
+  p.adonis$`Pr(>F)`[1] < 0.05 &  p.adonis$`Pr(>F)`[1] > 0.01 ~ paste(p.adonis$`Pr(>F)`[1], "*", sep = " "),
+  p.adonis$`Pr(>F)`[1] <= 0.01 & p.adonis$`Pr(>F)`[1] > 0.001  ~ paste(p.adonis$`Pr(>F)`[1], "**", sep = " "),
+  p.adonis$`Pr(>F)`[1] <= 0.001 ~ paste(p.adonis$`Pr(>F)`[1], "***", sep = " "),
+)
+annotations <- data.frame(
+        xpos = c(-Inf),
+        ypos =  c(Inf),
+        annotateText = p,
+        hjustvar = c(-0.2) ,
+        vjustvar = c(1.5))
+
+plot_ordination(physeq.filt.combined2, bc_ordination, color="TRUE_control") + 
+  geom_point(aes(colour=TRUE_control), size=3) +
+  theme(aspect.ratio=1) +
+  theme_bw()+
+scale_color_brewer(palette = "Set1", labels=c(paste("Tissue samples\nn =", true_count, sep = " "), paste("Negative controls\nn =", control_count, sep = " ")))+
+  stat_ellipse() +
+  xlab(pcoa1)+
+  ylab(pcoa2)+
+  theme(panel.grid =  element_blank())+
+  ggtitle("Differences Negative controls and True samples - Bray curtis - Rarified") +
+  theme (axis.text=element_text(size=14),
+         axis.title=element_text(size=16,face="bold"))+
+  theme(
+        # legend.justification=c(1.15,-0.15), legend.position=c(1,0),
+        legend.text = element_text(size = 12),
+        legend.title = element_blank())+
+  geom_text(data=annotations,aes(x=xpos,y=ypos,hjust=hjustvar,vjust=vjustvar,label=annotateText), inherit.aes = FALSE)
+
+
+
+uf_dist = phyloseq::distance(physeq.filt.combined2, method="unifrac", weighted=F)
+uf_ordination = ordinate(physeq.filt.combined2, method="PCoA", distance=uf_dist)
+
+true_count <- as_tibble(sample_data(physeq.filt.combined)) %>% filter(TRUE_control == "TRUE") %>% count(TRUE_control) %>% pull(n)
+control_count <- as_tibble(sample_data(physeq.filt.combined)) %>% filter(TRUE_control == "control") %>% count(TRUE_control) %>% pull(n)
+
+pcoa1 <- paste("PCoA 1", " [", round(uf_ordination[[3]]$Relative_eig[1], digits = 3)*100, "%]", sep = "")
+pcoa2 <- paste("PCoA 2", " [", round(uf_ordination[[3]]$Relative_eig[2], digits = 3)*100, "%]", sep = "")
+
+set.seed(40)
+p.adonis <- adonis2(uf_dist ~ sample_data(physeq.filt.combined2)$TRUE_control)
+
+p <- case_when(
+  p.adonis$`Pr(>F)`[1] > 0.05 ~ "n.s.",
+  p.adonis$`Pr(>F)`[1] < 0.05 &  p.adonis$`Pr(>F)`[1] > 0.01 ~ paste(p.adonis$`Pr(>F)`[1], "*", sep = " "),
+  p.adonis$`Pr(>F)`[1] <= 0.01 & p.adonis$`Pr(>F)`[1] > 0.001  ~ paste(p.adonis$`Pr(>F)`[1], "**", sep = " "),
+  p.adonis$`Pr(>F)`[1] <= 0.001 ~ paste(p.adonis$`Pr(>F)`[1], "***", sep = " "),
+)
+annotations <- data.frame(
+        xpos = c(-Inf),
+        ypos =  c(Inf),
+        annotateText = p,
+        hjustvar = c(-0.2) ,
+        vjustvar = c(1.5))
+
+plot_ordination(physeq.filt.combined2, uf_ordination, color="TRUE_control") + 
+  geom_point(aes(colour=TRUE_control), size=3) +
+  theme(aspect.ratio=1) +
+  theme_bw()+
+ scale_color_brewer(palette = "Set1", labels=c(paste("Tissue samples\nn =", true_count, sep = " "), paste("Negative controls\nn =", control_count, sep = " ")))+
+  stat_ellipse() +
+  xlab(pcoa1)+
+  ylab(pcoa2)+
+  theme(panel.grid =  element_blank())+
+  ggtitle("Differences Negative controls and True samples - Unweighted UF - Rarified") +
+  theme (axis.text=element_text(size=14),
+         axis.title=element_text(size=16,face="bold"))+
+  theme(
+        # legend.justification=c(1.15,-0.15), legend.position=c(1,0),
+        legend.text = element_text(size = 12),
+        legend.title = element_blank())+
+  geom_text(data=annotations,aes(x=xpos,y=ypos,hjust=hjustvar,vjust=vjustvar,label=annotateText), inherit.aes = FALSE)
+```
+
+### Beta diversity within negative controls
+
+```{r}
+partum_count <- as_tibble(sample_data(physeq.filt.nct.s)) %>% filter(sample_side == "paraffin_tumor") %>% count(sample_side) %>% pull(n)
+parpanc_count <- as_tibble(sample_data(physeq.filt.nct.s)) %>% filter(sample_side == "paraffin_normal") %>% count(sample_side) %>% pull(n)
+buffer_count <- as_tibble(sample_data(physeq.filt.nct.s)) %>% filter(sample_side == "buffer") %>% count(sample_side) %>% pull(n)
+h2o_count <- as_tibble(sample_data(physeq.filt.nct.s)) %>% filter(sample_side == "PCR_ctrl_H2O") %>% count(sample_side) %>% pull(n)
+par_count <- as_tibble(sample_data(physeq.filt.nct.s)) %>% filter(sample_side == "paraffin") %>% count(sample_side) %>% pull(n)
+
+bray_dist = phyloseq::distance(physeq.filt.nct.s, method="bray")
+bc_ordination = ordinate(physeq.filt.nct.s, method="PCoA", distance=bray_dist)
+
+pcoa1 <- paste("PCoA 1", " [", round(bc_ordination[[3]]$Relative_eig[1], digits = 3)*100, "%]", sep = "")
+pcoa2 <- paste("PCoA 2", " [", round(bc_ordination[[3]]$Relative_eig[2], digits = 3)*100, "%]", sep = "")
+
+set.seed(40)
+p.adonis <- adonis2(bray_dist ~ sample_data(physeq.filt.nct.s)$sample_side)
+
+p <- case_when(
+  p.adonis$`Pr(>F)`[1] > 0.05 ~ "n.s.",
+  p.adonis$`Pr(>F)`[1] < 0.05 &  p.adonis$`Pr(>F)`[1] > 0.01 ~ paste(p.adonis$`Pr(>F)`[1], "*", sep = " "),
+  p.adonis$`Pr(>F)`[1] <= 0.01 & p.adonis$`Pr(>F)`[1] > 0.001  ~ paste(p.adonis$`Pr(>F)`[1], "**", sep = " "),
+  p.adonis$`Pr(>F)`[1] <= 0.001 ~ paste(p.adonis$`Pr(>F)`[1], "***", sep = " "),
+)
+annotations <- data.frame(
+        xpos = c(-Inf),
+        ypos =  c(Inf),
+        annotateText = p,
+        hjustvar = c(-0.2) ,
+        vjustvar = c(1.5))
+
+
+plot_ordination(physeq.filt.nct.s, bc_ordination, color="sample_side") + 
+  geom_point(aes(colour=sample_side), size=3) +
+  theme(aspect.ratio=1) +
+  theme_bw()+
+scale_color_brewer(palette = "Set1", labels=c(paste("DNA Ext. buffer\nn =", buffer_count, sep = " "), paste("Paraffin\nn =", par_count, sep = " "), paste("Paraffin pancreas\nn =", parpanc_count, sep = " "), paste("Paraffin tumor\nn =", partum_count, sep = " "), paste("PCR H2O\nn =", h2o_count, sep = " ")))+
+  stat_ellipse() +
+  xlab(pcoa1)+
+  ylab(pcoa2)+
+  theme(panel.grid =  element_blank())+
+  ggtitle("Differences Negative controls and True samples - Bray curtis - Rarified") +
+  theme (axis.text=element_text(size=14),
+         axis.title=element_text(size=16,face="bold"))+
+  theme(
+        # legend.justification=c(1.15,-0.15), legend.position=c(1,0),
+        legend.text = element_text(size = 12),
+        legend.title = element_blank())+
+  geom_text(data=annotations,aes(x=xpos,y=ypos,hjust=hjustvar,vjust=vjustvar,label=annotateText), inherit.aes = FALSE)
+
+ps.disper <- betadisper(bray_dist, as.matrix(sample_data(physeq.filt.nct.s)$sample_side))
+permutest(ps.disper, pair=TRUE)
+pairwise.adonis(bray_dist, sample_data(physeq.filt.nct.s)$sample_side)
+```
+
+Perfect! That is the first proof that there might be a true signal in the tissue samples compared to negative controls
+
+### Identify Contaminants - Prevalence  isContaminant
+
+Now we will apply decontam by using the prevalence method. 
+
+There are two approaches provided in the [decontam package](https://www.ncbi.nlm.nih.gov/pmc/articles/PMC6298009/). The one ist the prevalence approach the other one is the frequency approach. Frequency-based contaminant identification is not recommended for extremely low-biomass samples (C(contamnants)~S(true taxa) or C>S) because the simple approximations the authors are making for the dependence of contaminant frequency on total DNA concentration break down when contaminants comprise a large fraction of sequencing reads.
+
+The prevalence approach assumes total sample DNA (T) is a mixture of contaminating DNA (C) and true sample DNA (S), i.e., T=C+S. Thus, in negative controls (S~0), the likelihood of detecting any given contaminant sequence feature will be higher than in true samples (S>0). That is, the prevalence of contaminants will be higher in negative controls than in true samples due to the absence of competing DNA in the sequencing process. For each sequence feature, a chi-square statistic on the 2×2 presence-absence table in true samples and negative controls is computed, and a score statistic P is defined as the tail probability of the chi-square distribution at that value. The p value from Fisher’s exact test is used as the score statistic instead if there are too few samples for the chi-square approximation. The score statistic ranges from 0 to 1. Small scores indicate the contaminant model of higher prevalence in negative control samples is a better fit. Although the prevalence-based score statistic is set equal to a p-value from the chi-square or Fisher’s exact tests, it is used by decontam only as a score that effectively distinguishes between the contaminant and non-contaminant mixture components. This treatment is also recommended by the potential for cross-contamination to violate distributional assumptions related to independence between samples.
+
+Prevalence-based contaminant identification remains valid in very low biomass environments where a majority of MGS sequences might derive from contaminants rather than true inhabitants of the sampled environment (i.e. C ~ S or C>S). Even in the low-biomass regime, it is still expected that non-contaminants will appear in a larger fraction of true samples than in negative control samples.
+
+```{r}
+physeq.filt.combined.r <- transform(physeq.filt.combined, "compositional")
+threshold <- 0.9
+contamdf.prev <- isContaminant(physeq.filt.combined.r, method="prevalence", neg="is.neg", threshold = threshold)
+cont <- as.data.frame(table(contamdf.prev$contaminant))
+contprev <- contamdf.prev %>% filter (contaminant==TRUE)
+contprev <- contprev %>% mutate (taxID=rownames(contprev))
+which(contamdf.prev$contaminant)
+length(which(contamdf.prev$contaminant))
+```
+
+Hereby **`r cont[2,2]` taxa are considered as contaminants** and will be removed subsequently. As the matrix above point out, a lot of high abundant taxa will be removed. **The `r (which(contamdf.prev$contaminant))[1]`th most abundant taxon** is the most prevalent taxon which will be removed. The threshold of `r threshold` is determined with the following histogram.
+
+```{r}
+hist(contamdf.prev$p, 100, ylim = c(0,300), xlim = c(0,1))
+```
+
+We will control the "definition of contaminants" by looking to the distribution of contaminated taxa within true and control samples.
+
+
+```{r}
+# Make phyloseq object of presence-absence in negative controls and true samples
+ps.pa <- transform_sample_counts(physeq.filt.combined.r, function(abund) 1*(abund>0))
+ps.pa.neg <- prune_samples(sample_data(ps.pa)$TRUE_control == "control", ps.pa)
+ps.pa.pos <- prune_samples(sample_data(ps.pa)$TRUE_control == "TRUE", ps.pa)
+# Make data.frame of prevalence in positive and negative samples
+df.pa <- data.frame(pa.pos=taxa_sums(ps.pa.pos), pa.neg=taxa_sums(ps.pa.neg),
+                      contaminant=contamdf.prev$contaminant)
+ggplot(data=df.pa, aes(x=pa.neg, y=pa.pos, color=contaminant)) + geom_point() +
+  xlab("Prevalence (Negative Controls)") + ylab("Prevalence (True Samples)") + ggtitle("Contaminants prevalence in tumor vs NTCs") + theme_bw()
+```
+
+
+
+### Identify Contaminants - Prevalence  isNotContaminant
+
+The prevalence of each sequence (or OTU) in the input feature table across samples and negative controls is used to identify non-contaminant sequences. Note that the null hypothesis here is that sequences **are** contaminants. This function is intended for use on low-biomass samples in which a large proportion of the sequences are likely to be contaminants.
+
+```{r}
+threshold <- 0.1
+samdf.prev <- isNotContaminant(physeq.filt.combined.r, method="prevalence", neg="is.neg", threshold = threshold, detailed = TRUE)
+sam <- samdf.prev %>% count(not.contaminant)
+samprev <- samdf.prev %>% filter (not.contaminant==TRUE) %>% 
+ mutate (taxID=rownames(.))
+which(samdf.prev$not.contaminant)
+length(which(samdf.prev$not.contaminant))
+```
+
+Hereby **`r sam[2,2]` taxa are considered as not contaminants** and will be removed subsequently. As the matrix above point out, a lot of high abundant taxa will be removed. **The `r (which(contamdf.prev$contaminant))[1]`th most abundant taxon** is the most prevalent taxon which will be kept. The threshold of `r threshold` is determined with the following histogram.
+
+```{r}
+hist(samdf.prev$p, 100, ylim = c(0,300), xlim = c(0,1))
+```
+
+We will control the "definition of contaminants" by looking to the distribution of contaminated taxa within true and control samples.
+
+
+```{r}
+# Make phyloseq object of presence-absence in negative controls and true samples
+ps.pa <- transform_sample_counts(physeq.filt.combined, function(abund) 1*(abund>0))
+ps.pa.neg <- prune_samples(sample_data(ps.pa)$TRUE_control == "control", ps.pa)
+ps.pa.pos <- prune_samples(sample_data(ps.pa)$TRUE_control == "TRUE", ps.pa)
+# Make data.frame of prevalence in positive and negative samples
+df.pa <- data.frame(pa.pos=taxa_sums(ps.pa.pos), pa.neg=taxa_sums(ps.pa.neg),
+                      not.contaminant=samdf.prev$not.contaminant)
+ggplot(data=df.pa, aes(x=pa.neg, y=pa.pos, color=not.contaminant)) + geom_point() +
+  xlab("Prevalence (Negative Controls)") + ylab("Prevalence (True Samples)") + ggtitle("Contaminants prevalence in tumor vs NTCs") + theme_bw()
+```
+
+### Filtering Contaminants
+
+2 different approaches were conducted with the decontam package. The first is the determination of Contaminants with the prevalence method, the other one is the determantion of true sample with the prevalence approach.
+
+```{r}
+physeq <- prune_taxa(!contamdf.prev$contaminant, physeq.filt.combined)
+# physeq <- prune_taxa(samdf.prev$not.contaminant, physeq.filt.combined)
+physeq <- subset_samples(physeq, is.neg ==FALSE )
+```
+
+## Rarefaction {.tabset}
+
+### Sequencing depth
+
+First we give us an overview how many bacterial reads we have per sample to determine a reasonable threshold. 
+```{r}
+bac.count <- as_tibble(colSums(as.data.frame(otu_table(physeq))))%>% mutate (id=sample_data(physeq)$id)
+sum.bac.count <- bac.count %>% summarise(mean=mean(value),
+                                          min=min(value),
+                                          max=max(value),
+                                          median=median(value)) 
+
+knitr::kable (sum.bac.count, caption="Sequencing summary", booktabs =TRUE) %>%
+  kable_styling(font_size = 15)
+
+bac.count %>% 
+  arrange(value) %>% 
+  kable (caption="Bacterial reads", booktabs =TRUE) %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive")) %>% 
+  kable_classic(full_width = F, html_font = "Cambria") %>%
+  scroll_box(width = "100%", height = "600px")
+
+bac.count %>% 
+  filter(value<= 1000) %>% 
+  arrange(value) %>% 
+  kable (caption="Bacterial reads", booktabs =TRUE) %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive")) %>% 
+  kable_classic(full_width = F, html_font = "Cambria") %>%
+  scroll_box(width = "100%", height = "600px")
+```
+
+According to this summary all samples are above `r sum.bac.count$min` reads. 
+
+## Rarifying
+
+
+```{r}
+# sample.size <- sum.bac.count$min
+sample.size <- 1000
+seed <- 711
+physeq.rar <- rarefy_even_depth(physeq = physeq, sample.size = sample.size, rngseed = seed)
+rarecurve(t(otu_table(physeq.rar)), step=50, cex=0.5)
+
+# phy_tree = rtree(ntaxa(physeq.rar), rooted=TRUE, tip.label=taxa_names(physeq.rar))
+# physeq.rar  <- merge_phyloseq(physeq.rar , phy_tree)
+```
+
+For rarifaction `r seed` seed and a threshold of  **`r format(sample.size, scientific=FALSE)`** was used.
+Now we have `r nrow(sample_data(physeq.rar))` samples and `r nrow(otu_table(physeq.rar))` taxa. 
+
+
+# Results {.tabset}  
+
+## Alpha diversity 
+
+```{r}
+rich = estimate_richness(physeq.rar)
+rich$id <- gsub("X","", rownames(rich))
+rownames(rich) <- rich$id
+rich_meta <- merge(sample_data(physeq.rar),rich, by="row.names")
+rich_meta %>% group_by(sample_side) %>% count()
+
+#Shapiro-Wilk
+sh.ob <- rich_meta %>% shapiro_test(Observed)
+sh.sh <- rich_meta %>% shapiro_test(Shannon)
+sh.in <- rich_meta %>% shapiro_test(InvSimpson)
+
+sh.ob
+sh.sh
+sh.in
+
+# #Levene Test
+l.ob <- rich_meta %>% levene_test(Observed ~ sample_side)
+l.sh <- rich_meta %>% levene_test(Shannon ~ sample_side)
+l.in <- rich_meta %>% levene_test(InvSimpson ~ sample_side)
+
+l.ob
+l.sh
+l.in
+
+##Shannon data is normally distributed according to Shapiro-Wilk (but not Levene) (p>0.05), therefore, we can apply a t-test
+##Observed and InvSimpson are not normally distributed according to Shapiro-Wilk (p<0.05), therefore, we have to apply the Wilcoxon test
+
+
+# # stat-test
+ob <- rich_meta %>% wilcox_test(Observed ~ sample_side) %>% adjust_pvalue(method = "BH") %>%  add_significance("p.adj") %>% add_xy_position()
+sh <- rich_meta %>% wilcox_test(Shannon ~ sample_side) %>% adjust_pvalue(method = "BH") %>%  add_significance("p.adj") %>% add_xy_position()
+iv <- rich_meta %>% wilcox_test(InvSimpson ~ sample_side) %>% adjust_pvalue(method = "BH") %>%  add_significance("p.adj") %>% add_xy_position()
+
+ob
+sh
+iv
+
+group.colors <- c(normal = "dodgerblue3", tumor = "firebrick2")
+my.labels <- c("Normal pancreas", "Tumor tissue")
+
+#Observed species
+ggplot (rich_meta, aes (x=sample_side, y=Observed, fill=sample_side))+ 
+  geom_boxplot()+
+  geom_point (position=position_jitterdodge( jitter.width = 0.05))+
+  theme_gray() + 
+  xlab("")+
+  # facet_grid(.~tp)+
+  scale_x_discrete(labels= my.labels)+
+  scale_fill_manual(values=group.colors, labels = c("\nNormal pancreas\nn = 16\n", "\nTumor tissue\nn = 26\n"))+
+  ggtitle("FFPE human tumor tissue vs. normal pancreas - Observed species") +
+  theme(axis.text.y = element_text (size=12),
+        axis.title = element_text(size=14, face="bold"))+
+  theme(legend.text = element_text(size = 12),
+        legend.title = element_blank(),
+        # legend.background = element_rect(size=0.25, linetype="solid", colour ="black"),
+        legend.key.size = unit(4,"mm"),
+        axis.text.x = element_text(size=12, hjust = .5, angle=0, vjust = .5),
+        plot.title = element_text(size = 14))+
+   stat_pvalue_manual(ob, label = "p.adj.signif", inherit.aes = FALSE, tip.length = 0.01)
+
+#Shannon index
+ggplot (rich_meta, aes (x=sample_side, y=Shannon, fill=sample_side))+ 
+  geom_boxplot()+
+  geom_point (position=position_jitterdodge( jitter.width = 0.05))+
+  theme_gray() + 
+  xlab("")+
+  # facet_grid(.~tp)+
+  scale_x_discrete(labels= my.labels)+
+  scale_fill_manual(values=group.colors, labels = c("\nNormal pancreas\nn = 16\n", "\nTumor tissue\nn = 26\n"))+
+  ggtitle("FFPE human tumor tissue vs. normal pancreas - Shannon index") +
+  theme(axis.text.y = element_text (size=12),
+        axis.title = element_text(size=14, face="bold"))+
+  theme(legend.text = element_text(size = 12),
+        legend.title = element_blank(),
+        # legend.background = element_rect(size=0.25, linetype="solid", colour ="black"),
+        legend.key.size = unit(4,"mm"),
+        axis.text.x = element_text(size=12, hjust = .5, angle=0, vjust = .5),
+        plot.title = element_text(size = 14))+
+   stat_pvalue_manual(sh, label = "p.adj.signif", inherit.aes = FALSE, tip.length = 0.01)
+
+#InvSimpson index
+ggplot (rich_meta, aes (x=sample_side, y=InvSimpson, fill=sample_side))+ 
+  geom_boxplot()+
+  geom_point (position=position_jitterdodge( jitter.width = 0.05))+
+  theme_gray() + 
+  xlab("")+
+  # facet_grid(.~tp)+
+  scale_x_discrete(labels= my.labels)+
+  scale_fill_manual(values=group.colors, labels = c("\nNormal pancreas\nn = 16\n", "\nTumor tissue\nn = 26\n"))+
+  ggtitle("FFPE human tumor tissue vs. normal pancreas - Inverse Simpson index") +
+  theme(axis.text.y = element_text (size=12),
+        axis.title = element_text(size=14, face="bold"))+
+  theme(legend.text = element_text(size = 12),
+        legend.title = element_blank(),
+        # legend.background = element_rect(size=0.25, linetype="solid", colour ="black"),
+        legend.key.size = unit(4,"mm"),
+        axis.text.x = element_text(size=12, hjust = .5, angle=0, vjust = .5),
+        plot.title = element_text(size = 14))+
+   stat_pvalue_manual(iv, label = "p.adj.signif", inherit.aes = FALSE, tip.length = 0.01)
+
+```
+
+
+## Beta diversity
+
+```{r}
+panc_count <- as_tibble(sample_data(physeq.rar)) %>% filter(sample_side == "normal") %>% count(sample_side) %>% pull(n)
+tum_count <- as_tibble(sample_data(physeq.rar)) %>% filter(sample_side == "tumor") %>% count(sample_side) %>% pull(n)
+
+#unweighted UF
+unifrac_dist = phyloseq::distance(physeq.rar, method="unifrac", weighted=F)
+uf_ordination = ordinate(physeq.rar, method="PCoA", distance=unifrac_dist)
+
+pcoa1 <- paste("PCoA 1", " [", round(uf_ordination[[3]]$Relative_eig[1], digits = 3)*100, "%]", sep = "")
+pcoa2 <- paste("PCoA 2", " [", round(uf_ordination[[3]]$Relative_eig[2], digits = 3)*100, "%]", sep = "")
+
+set.seed(40)
+p.adonis <- adonis2(unifrac_dist ~ sample_data(physeq.rar)$sample_side)
+p <- case_when(
+  p.adonis$`Pr(>F)`[1] > 0.05 ~ "n.s.",
+  p.adonis$`Pr(>F)`[1] < 0.05 &  p.adonis$`Pr(>F)`[1] > 0.01 ~ paste("p =", p.adonis$`Pr(>F)`[1], "*", sep = " "),
+  p.adonis$`Pr(>F)`[1] <= 0.01 & p.adonis$`Pr(>F)`[1] > 0.001  ~ paste("p =", p.adonis$`Pr(>F)`[1], "**", sep = " "),
+  p.adonis$`Pr(>F)`[1] <= 0.001 ~ paste("p =",p.adonis$`Pr(>F)`[1], "***", sep = " "),
+)
+
+annotations <- data.frame(
+        xpos = c(-Inf),
+        ypos =  c(Inf),
+        annotateText = p,
+        hjustvar = c(-0.2) ,
+        vjustvar = c(1.5))
+
+plot_ordination(physeq.rar, uf_ordination, color="sample_side") + 
+  geom_point(aes(colour=sample_side), size=3) +
+  theme(aspect.ratio=1) +
+  theme_bw()+
+  scale_color_manual(values=group.colors, labels=c(paste("Normal pancreas\nn =", panc_count, sep = " "), paste("\nTumor tissue\nn =", tum_count, sep = " ", "\n")))+
+  stat_ellipse() +
+  xlab(pcoa1)+
+  ylab(pcoa2)+
+  theme(panel.grid =  element_blank())+
+  ggtitle("FFPE human tumor tissue vs. normal pancreas - unweighted UniFrac") +
+  theme (axis.text=element_text(size=14),
+         axis.title=element_text(size=16,face="bold"))+
+  theme(
+        # legend.justification=c(1.15,-0.15), legend.position=c(1,0),
+        legend.text = element_text(size = 12),
+        legend.title = element_blank())+
+  geom_text(data=annotations,aes(x=xpos,y=ypos,hjust=hjustvar,vjust=vjustvar,label=annotateText), inherit.aes = FALSE)
+
+
+#weighted UF
+w_unifrac_dist = phyloseq::distance(physeq.rar, method="unifrac", weighted=T)
+wuf_ordination = ordinate(physeq.rar, method="PCoA", distance=w_unifrac_dist)
+
+pcoa1 <- paste("PCoA 1", " [", round(wuf_ordination[[3]]$Relative_eig[1], digits = 3)*100, "%]", sep = "")
+pcoa2 <- paste("PCoA 2", " [", round(wuf_ordination[[3]]$Relative_eig[2], digits = 3)*100, "%]", sep = "")
+
+
+set.seed(40)
+p.adonis <- adonis2(w_unifrac_dist ~ sample_data(physeq.rar)$sample_side)
+p <- case_when(
+  p.adonis$`Pr(>F)`[1] > 0.05 ~ "n.s.",
+  p.adonis$`Pr(>F)`[1] < 0.05 &  p.adonis$`Pr(>F)`[1] > 0.01 ~ paste("p =", p.adonis$`Pr(>F)`[1], "*", sep = " "),
+  p.adonis$`Pr(>F)`[1] <= 0.01 & p.adonis$`Pr(>F)`[1] > 0.001  ~ paste("p =", p.adonis$`Pr(>F)`[1], "**", sep = " "),
+  p.adonis$`Pr(>F)`[1] <= 0.001 ~ paste("p =",p.adonis$`Pr(>F)`[1], "***", sep = " "),
+)
+
+annotations <- data.frame(
+        xpos = c(-Inf),
+        ypos =  c(Inf),
+        annotateText = p,
+        hjustvar = c(-0.2) ,
+        vjustvar = c(1.5))
+
+plot_ordination(physeq.rar, wuf_ordination, color="sample_side") + 
+  geom_point(aes(colour=sample_side), size=3) +
+  theme(aspect.ratio=1) +
+  theme_bw()+
+  scale_color_manual(values=group.colors, labels=c(paste("Normal pancreas\nn =", panc_count, sep = " "), paste("\nTumor tissue\nn =", tum_count, sep = " ", "\n")))+
+  stat_ellipse() +
+  xlab(pcoa1)+
+  ylab(pcoa2)+
+  theme(panel.grid =  element_blank())+
+  ggtitle("FFPE human tumor tissue vs. normal pancreas - weigthed UniFrac") +
+  theme (axis.text=element_text(size=14),
+         axis.title=element_text(size=16,face="bold"))+
+  theme(
+        # legend.justification=c(1.15,-0.15), legend.position=c(1,0),
+        legend.text = element_text(size = 12),
+        legend.title = element_blank())+
+  geom_text(data=annotations,aes(x=xpos,y=ypos,hjust=hjustvar,vjust=vjustvar,label=annotateText), inherit.aes = FALSE)
+
+
+#Bray curtis
+bray_dist = phyloseq::distance(physeq.rar, method="bray")
+bc_ordination = ordinate(physeq.rar, method="PCoA", distance=bray_dist)
+
+pcoa1 <- paste("PCoA 1", " [", round(bc_ordination[[3]]$Relative_eig[1], digits = 3)*100, "%]", sep = "")
+pcoa2 <- paste("PCoA 2", " [", round(bc_ordination[[3]]$Relative_eig[2], digits = 3)*100, "%]", sep = "")
+
+set.seed(40)
+p.adonis <- adonis2(bray_dist ~ sample_data(physeq.rar)$sample_side)
+p <- case_when(
+  p.adonis$`Pr(>F)`[1] > 0.05 ~ "n.s.",
+  p.adonis$`Pr(>F)`[1] < 0.05 &  p.adonis$`Pr(>F)`[1] > 0.01 ~ paste("p =", p.adonis$`Pr(>F)`[1], "*", sep = " "),
+  p.adonis$`Pr(>F)`[1] <= 0.01 & p.adonis$`Pr(>F)`[1] > 0.001  ~ paste("p =", p.adonis$`Pr(>F)`[1], "**", sep = " "),
+  p.adonis$`Pr(>F)`[1] <= 0.001 ~ paste("p =",p.adonis$`Pr(>F)`[1], "***", sep = " "),
+)
+
+annotations <- data.frame(
+        xpos = c(-Inf),
+        ypos =  c(Inf),
+        annotateText = p,
+        hjustvar = c(-0.2) ,
+        vjustvar = c(1.5))
+
+plot_ordination(physeq.rar, bc_ordination, color="sample_side") + 
+  geom_point(aes(colour=sample_side), size=3) +
+  theme(aspect.ratio=1) +
+  theme_bw()+
+ scale_color_manual(values=group.colors, labels=c(paste("Normal pancreas\nn =", panc_count, sep = " "), paste("\nTumor tissue\nn =", tum_count, sep = " ", "\n")))+
+  stat_ellipse() +
+  xlab(pcoa1)+
+  ylab(pcoa2)+
+  theme(panel.grid =  element_blank())+
+  ggtitle("FFPE human tumor tissue vs. normal pancreas - Bray curtis") +
+  theme (axis.text=element_text(size=14),
+         axis.title=element_text(size=16,face="bold"))+
+  theme(
+        # legend.justification=c(1.15,-0.15), legend.position=c(1,0),
+        legend.text = element_text(size = 12),
+        legend.title = element_blank())+
+  geom_text(data=annotations,aes(x=xpos,y=ypos,hjust=hjustvar,vjust=vjustvar,label=annotateText), inherit.aes = FALSE)
+```
+
+
+## Differential abundance
+
+Once we have observed significant differences regarding all beta diversity measurements,  we like to define which taxa are responsible for these differences. This methodical step is called differential abundance. There are several approaches to calculate the DA. This recent [paper](https://www.nature.com/articles/s41467-022-28034-z) nicely reviews the different approaches with and without prevalence filtering. So far I just established the most common way: Huttenhowers LEFSE, which is broadly applied in several microbiome studies. This tool applies Liniar discriminant analysis (LDA).
+
+We have to different ways of generate the important figures.  
+
+1. approach: all is done in R  
+2. approach: a table is created in R which can be uploaded at huttenhower galaxy  
+
+For both approaches we need yingtools2.
+
+For using the yingtool2 it is not allowed to have columns  in the sample_data containing the word "sample". Therefore, we have to adjust the sample_data a little bit.
+
+```{r}
+library(yingtools2)
+df <- as_tibble(as.data.frame(sample_data(physeq.rar)))
+df <- df %>% mutate(site = sample_side,
+                    nr = sample_nr) %>%
+  select(-sample_side, -sample_nr, -sample) %>% as.data.frame()
+rownames(df) <- paste(df$uniqueID, df$site, sep = ".")
+df <- sample_data(df)
+phy <- merge_phyloseq(otu_table(physeq.rar), tax_table(physeq.rar), df)
+
+lda <- lda.effect(phy, class="site")
+
+##LDA Plot (all, no subsetting)
+lda.plot <- lda %>% filter(pass==TRUE & lda > 3.5) %>%
+  mutate(lda=if_else(as.numeric(factor(direction))==2,-lda,lda)) %>%
+  arrange(lda) %>%
+  mutate(taxon=fct_inorder(taxon))
+
+ggplot(lda.plot,aes(x=taxon,y=lda,fill=direction)) + 
+  geom_col()+ 
+  coord_flip()+
+  ggtitle("FFPE human tumor tissue vs. normal pancreas - LDA plot")+
+  ylab("LDA score")+
+  xlab("Taxa")+
+  scale_fill_manual(values=group.colors, labels = my.labels)+
+  theme(legend.text = element_text(size = 12),
+        legend.title = element_blank())
+
+lvls <- rank_names(phy)
+for (i in 1:length(lvls)) {
+  lda[[lvls[i]]] <- str_split(lda$taxonomy,"\\|") %>% map_chr(~str_c(.[1:i],collapse="|"))
+}
+
+library(ggtree)
+lefse.phy <- as.phylo.formula2(as.formula(paste("~",paste(lvls,collapse="/"))),data=lda)
+gt <- ggtree(lefse.phy,layout="circular")
+
+get.children.yrange <- function(node,gd) {
+  hits <- gd$node[gd$parent==node]
+  if (length(hits)==0 | node %in% hits) {
+    return(gd$y[gd$node==node])
+  } else {
+    return(unlist(lapply(hits,get.children.yrange,gd)))
+  }
+}
+gd <- gt$data %>% left_join(lda,by=c("label"="taxonomy")) %>%
+  mutate(y.range=lapply(node,get.children.yrange,cur_data()),
+  ymin=map_dbl(y.range,min)-0.5,
+  ymax=map_dbl(y.range,max)+0.5,
+  xmin=x,
+  xmax=1+2*length(lvls)-x,
+  ymid=(ymin+ymax)/2,
+  xtext=xmax-0.5,
+  angle.label=scales::rescale(ymid,from=range(y),to=c(0,360)),
+  angle.label=if_else(is.between(angle.label,0,180),angle.label-90,angle.label+90),
+  short.label=map_chr(str_split(label,"\\|"),last))
+
+gt + geom_point(data=gd,aes(size=log.max),color="dark gray",fill="gray",shape=21) +
+  geom_rect(data=filter(gd,pass),aes(xmin=xmin,xmax=xmax,ymin=ymin,ymax=ymax,fill=direction),color="dark gray",alpha=0.2) +
+  geom_point(data=filter(gd,pass),aes(fill=direction,size=log.max),shape=21) +
+  geom_text(data=filter(gd,pass),aes(x=xtext,y=ymid,label=short.label,angle=angle.label)) +
+  theme(legend.position="right")
+```
+
+Huttenhowers Lefse uses python. Happily some guys have written a function which converts a phyloseq object to a text file which can be uploaded [here](https://huttenhower.sph.harvard.edu/galaxy/).
+
+The output is stored in the current working directory and can be uploaded [here](https://huttenhower.sph.harvard.edu/galaxy/). Get data: upload file --> Lefse
+
+```{r}
+library(reshape2)
+lefse2 <- function (phy, class, subclass = NA, subject = NA, anova.alpha = 0.05,
+                    wilcoxon.alpha = 0.05, lda.cutoff = 2, wilcoxon.within.subclass = FALSE,
+                    one.against.one = FALSE, mult.test.correction = 0, make.lefse.plots = FALSE,
+                    by_otus = FALSE, levels = rank_names(phy)) {
+  keepvars <- c(class, subclass, subject, "sample")
+  keepvars <- unique(keepvars[!is.na(keepvars)])
+  samp <- get.samp(phy)[, keepvars]
+  if (by_otus) {
+    otu <- get.otu.melt(phy, sample_data = FALSE)
+    otu.levels <- otu %>%
+      mutate(taxon = otu) %>%
+      group_by(sample,taxon) %>%
+      dplyr::summarize(pctseqs = sum(pctseqs)) %>%
+      mutate(taxon = gsub(" ", "_", taxon))
+  }else{
+    otu <- get.otu.melt(phy, sample_data = FALSE)
+    otu.list <- lapply(1:length(levels), function(i) {
+      lvls <- levels[1:i]
+      lvl <- levels[i]
+      otu.level <- otu
+      otu.level$taxon <- do.call(paste, c(lapply(lvls, function(l) otu[[l]]), sep = "|"))
+      otu.level$rank <- lvl
+      otu.level2 <- otu.level %>%
+        group_by(sample, taxon,  rank) %>%
+        dplyr::summarize(pctseqs = sum(pctseqs)) %>%
+        ungroup()
+      return(otu.level2)
+    })
+    otu.levels <- bind_rows(otu.list) %>%
+      mutate(taxon = gsub(" ","_", taxon))
+  }
+  otu.tbl <- otu.levels %>%
+    dcast(sample ~ taxon, value.var = "pctseqs",fill = 0) %>%
+    left_join(samp, by = "sample") %>%
+    select_(.dots = c(keepvars,lazyeval::interp(~everything())))
+  if (is.na(subject) | subject != "sample") {
+    otu.tbl <- otu.tbl %>% select(-sample)
+  }
+  tbl <- otu.tbl %>% t()
+  write.table(tbl, "lefse.Cov50.ori.txt", quote = FALSE, sep = "\t",
+              col.names = FALSE)
+}
+lefse2(phy,class="site")
+```
+
+
+## Microbial composition at order level
+
+```{r, fig.width=10, fig.height=4}
+physeq.fam <- transform_sample_counts(physeq.rar, function(x){x/sum(x)})
+df.fam.melt <- psmelt(physeq.fam)
+
+df.fam.melt$order.v2 <- ifelse(df.fam.melt$Abundance>.03,as.character(df.fam.melt$order), "others")
+df.fam.melt$order.v2 <- factor(df.fam.melt$order.v2, levels=rev(unique(df.fam.melt$order.v2)))
+cols <- c("#9d547c","#56ca63","#a357d6","#419d2a","#525fd6","#8cbe3a","#c944aa","#5ba557","#9e66cb","#c1b735","#6d82ec","#e69728","#6654b0","#799330","#da7fdf","#3c782c","#e44586","#63c996","#dc3f53","#49cbc8","#cf3f29","#4fabda","#da6c2b","#598bd1","#b78c24","#8d4191","#a0b971","#b2386a","#479d71","#ae4341","#2ba198","#e07557","#5361a3","#dda353","#aa98df","#5b6114","#dc89bf","#327243","#e57b94","#277257","#9b62a0","#bbab59","#98495a","#526229","#d8827d","#857624","#9a4a22","#7c7d46","#e3a073","#9e6b33")
+
+header2 <- c("normal" = "Normal pancreas","tumor" = "Tumor tissue")
+
+ggplot(df.fam.melt, aes(x=id, y=Abundance, fill=order.v2)) +
+  geom_bar(stat="identity") +
+  scale_y_continuous(labels = scales::percent, expand = c(0, 0), limits = c(0, 1.02)) +
+  scale_fill_manual(values = cols) +
+  xlab ("") +
+  ylab("Relative abundance") +
+  theme_bw() +
+  facet_wrap(.~sample_side, scales = "free", labeller = as_labeller(header2))+
+  ggtitle("Microbial composition (Order level)")+
+  theme(axis.text.x = element_blank(),
+        axis.text.y = element_text (size=12),
+        axis.title = element_text(size=14, face="bold"))+
+  theme(legend.position = "right",
+        legend.title = element_blank(),
+        # legend.background = element_rect(size=0.25, linetype="solid", colour ="black"),
+        legend.key.size = unit(4,"mm"))
+
+ggplot(df.fam.melt, aes(x=id, y=Abundance, fill=order.v2)) +
+  geom_bar(stat="identity") +
+  scale_y_continuous(labels = scales::percent, expand = c(0, 0), limits = c(0, 1.02)) +
+  scale_fill_manual(values = cols) +
+  xlab ("") +
+  ylab("Relative abundance") +
+  theme_bw() +
+  facet_wrap(.~sample_side, scales = "free", labeller = as_labeller(header2))+
+  ggtitle("Microbial composition (Order level)")+
+  theme(axis.text.x = element_blank(),
+        axis.text.y = element_text (size=12),
+        axis.title = element_text(size=14, face="bold"))+
+  theme(legend.position = "bottom",
+        legend.title = element_blank(),
+        # legend.background = element_rect(size=0.25, linetype="solid", colour ="black"),
+        legend.key.size = unit(4,"mm"))
+
+```
+
+## Microbial composition at family level
+
+```{r, fig.width=10, fig.height=4}
+physeq.fam <- transform_sample_counts(physeq.rar, function(x){x/sum(x)})
+df.fam.melt <- psmelt(physeq.fam)
+
+df.fam.melt$family.v2 <- ifelse(df.fam.melt$Abundance>.03,as.character(df.fam.melt$family), "others")
+df.fam.melt$family.v2 <- factor(df.fam.melt$family.v2, levels=rev(unique(df.fam.melt$family.v2)))
+cols <- c("#9d547c","#56ca63","#a357d6","#419d2a","#525fd6","#8cbe3a","#c944aa","#5ba557","#9e66cb","#c1b735","#6d82ec","#e69728","#6654b0","#799330","#da7fdf","#3c782c","#e44586","#63c996","#dc3f53","#49cbc8","#cf3f29","#4fabda","#da6c2b","#598bd1","#b78c24","#8d4191","#a0b971","#b2386a","#479d71","#ae4341","#2ba198","#e07557","#5361a3","#dda353","#aa98df","#5b6114","#dc89bf","#327243","#e57b94","#277257","#9b62a0","#bbab59","#98495a","#526229","#d8827d","#857624","#9a4a22","#7c7d46","#e3a073","#9e6b33")
+
+ggplot(df.fam.melt, aes(x=id, y=Abundance, fill=family.v2)) +
+  geom_bar(stat="identity") +
+  scale_y_continuous(labels = scales::percent, expand = c(0, 0), limits = c(0, 1.02)) +
+  scale_fill_manual(values = cols) +
+  xlab ("") +
+  ylab("Relative abundance") +
+  theme_bw() +
+  facet_wrap(.~sample_side, scales = "free", labeller = as_labeller(header2))+
+  ggtitle("Microbial composition (Family level)")+
+  theme(axis.text.x = element_blank(),
+        axis.text.y = element_text (size=12),
+        axis.title = element_text(size=14, face="bold"))+
+  theme(legend.position = "right",
+        legend.title = element_blank(),
+        # legend.background = element_rect(size=0.25, linetype="solid", colour ="black"),
+        legend.key.size = unit(4,"mm"))
+
+ggplot(df.fam.melt, aes(x=id, y=Abundance, fill=family.v2)) +
+  geom_bar(stat="identity") +
+  scale_y_continuous(labels = scales::percent, expand = c(0, 0), limits = c(0, 1.02)) +
+  scale_fill_manual(values = cols) +
+  xlab ("") +
+  ylab("Relative abundance") +
+  theme_bw() +
+  facet_wrap(.~sample_side, scales = "free", labeller = as_labeller(header2))+
+  ggtitle("Microbial composition (Family level)")+
+  theme(axis.text.x = element_blank(),
+        axis.text.y = element_text (size=12),
+        axis.title = element_text(size=14, face="bold"))+
+  theme(legend.position = "bottom",
+        legend.title = element_blank(),
+        # legend.background = element_rect(size=0.25, linetype="solid", colour ="black"),
+        legend.key.size = unit(4,"mm"))
+
+```
+
+
+## Microbial composition at genus level
+
+```{r, fig.width=10, fig.height=4}
+physeq.fam <- transform_sample_counts(physeq.rar, function(x){x/sum(x)})
+df.fam.melt <- psmelt(physeq.fam)
+
+df.fam.melt$genus.v2 <- ifelse(df.fam.melt$Abundance>.04,as.character(df.fam.melt$genus), "others")
+df.fam.melt$genus.v2 <- factor(df.fam.melt$genus.v2, levels=rev(unique(df.fam.melt$genus.v2)))
+cols <- c("#9d547c","#56ca63","#a357d6","#419d2a","#525fd6","#8cbe3a","#c944aa","#5ba557","#9e66cb","#c1b735","#6d82ec","#e69728","#6654b0","#799330","#da7fdf","#3c782c","#e44586","#63c996","#dc3f53","#49cbc8","#cf3f29","#4fabda","#da6c2b","#598bd1","#b78c24","#8d4191","#a0b971","#b2386a","#479d71","#ae4341","#2ba198","#e07557","#5361a3","#dda353","#aa98df","#5b6114","#dc89bf","#327243","#e57b94","#277257","#9b62a0","#bbab59","#98495a","#526229","#d8827d","#857624","#9a4a22","#7c7d46","#e3a073","#9e6b33", "lawngreen", "orchid2", "olivedrab1", "ivory3", "darkseagreen", "bisque2", "darkgoldenrod2", "blue2", "skyblue", "seashell2", "turquoise")
+
+ggplot(df.fam.melt, aes(x=id, y=Abundance, fill=genus.v2)) +
+  geom_bar(stat="identity") +
+  scale_y_continuous(labels = scales::percent, expand = c(0, 0), limits = c(0, 1.02)) +
+  scale_fill_manual(values = cols) +
+  xlab ("") +
+  ylab("Relative abundance") +
+  theme_bw() +
+  facet_wrap(.~sample_side, scales = "free", labeller = as_labeller(header2))+
+  ggtitle("Microbial composition (Genus level)")+
+  theme(axis.text.x = element_blank(),
+        axis.text.y = element_text (size=12),
+        axis.title = element_text(size=14, face="bold"))+
+  theme(legend.position = "right",
+        legend.title = element_blank(),
+        # legend.background = element_rect(size=0.25, linetype="solid", colour ="black"),
+        legend.key.size = unit(4,"mm"))
+
+ggplot(df.fam.melt, aes(x=id, y=Abundance, fill=genus.v2)) +
+  geom_bar(stat="identity") +
+  scale_y_continuous(labels = scales::percent, expand = c(0, 0), limits = c(0, 1.02)) +
+  scale_fill_manual(values = cols) +
+  xlab ("") +
+  ylab("Relative abundance") +
+  theme_bw() +
+  facet_wrap(.~sample_side, scales = "free", labeller = as_labeller(header2))+
+  ggtitle("Microbial composition (Genus level)")+
+  theme(axis.text.x = element_blank(),
+        axis.text.y = element_text (size=12),
+        axis.title = element_text(size=14, face="bold"))+
+  theme(legend.position = "bottom",
+        legend.title = element_blank(),
+        # legend.background = element_rect(size=0.25, linetype="solid", colour ="black"),
+        legend.key.size = unit(4,"mm"))
+
+```
+
+## Microbial composition at species level
+
+```{r, fig.width=10, fig.height=4}
+physeq.fam <- transform_sample_counts(physeq.rar, function(x){x/sum(x)})
+df.fam.melt <- psmelt(physeq.fam)
+
+df.fam.melt$species.v2 <- ifelse(df.fam.melt$Abundance>.04,as.character(df.fam.melt$species), "others")
+df.fam.melt$species.v2 <- factor(df.fam.melt$species.v2, levels=rev(unique(df.fam.melt$species.v2)))
+cols <- c("#9d547c","#56ca63","#a357d6","#419d2a","#525fd6","#8cbe3a","#c944aa","#5ba557","#9e66cb","#c1b735","#6d82ec","#e69728","#6654b0","#799330","#da7fdf","#3c782c","#e44586","#63c996","#dc3f53","#49cbc8","#cf3f29","#4fabda","#da6c2b","#598bd1","#b78c24","#8d4191","#a0b971","#b2386a","#479d71","#ae4341","#2ba198","#e07557","#5361a3","#dda353","#aa98df","#5b6114","#dc89bf","#327243","#e57b94","#277257","#9b62a0","#bbab59","#98495a","#526229","#d8827d","#857624","#9a4a22","#7c7d46","#e3a073","#9e6b33", "lawngreen", "orchid2", "olivedrab1", "ivory3", "darkseagreen", "bisque2", "darkgoldenrod2", "blue2", "skyblue", "seashell2", "turquoise", "tan1", "seagreen2", "palevioletred3", "linen", "steelblue4", "limegreen", "purple3", "khaki3", "snow3", "darkslategray", "magenta2", "palegreen", "salmon", "maroon", "cyan2", "lightseagreen", "purple")
+
+
+ggplot(df.fam.melt, aes(x=id, y=Abundance, fill=species.v2)) +
+  geom_bar(stat="identity") +
+  scale_y_continuous(labels = scales::percent, expand = c(0, 0), limits = c(0, 1.02)) +
+  scale_fill_manual(values = cols) +
+  xlab ("") +
+  ylab("Relative abundance") +
+  theme_bw() +
+  facet_wrap(.~sample_side, scales = "free", labeller = as_labeller(header2))+
+  ggtitle("Microbial composition (Species level)")+
+  theme(axis.text.x = element_blank(),
+        axis.text.y = element_text (size=12),
+        axis.title = element_text(size=14, face="bold"))+
+  theme(legend.position = "right",
+        legend.title = element_blank(),
+        # legend.background = element_rect(size=0.25, linetype="solid", colour ="black"),
+        legend.key.size = unit(4,"mm"))
+
+ggplot(df.fam.melt, aes(x=id, y=Abundance, fill=species.v2)) +
+  geom_bar(stat="identity") +
+  scale_y_continuous(labels = scales::percent, expand = c(0, 0), limits = c(0, 1.02)) +
+  scale_fill_manual(values = cols) +
+  xlab ("") +
+  ylab("Relative abundance") +
+  theme_bw() +
+  facet_wrap(.~sample_side, scales = "free", labeller = as_labeller(header2))+
+  ggtitle("Microbial composition (Species level)")+
+  theme(axis.text.x = element_blank(),
+        axis.text.y = element_text (size=12),
+        axis.title = element_text(size=14, face="bold"))+
+  theme(legend.position = "bottom",
+        legend.title = element_blank(),
+        # legend.background = element_rect(size=0.25, linetype="solid", colour ="black"),
+        legend.key.size = unit(4,"mm"))
+
+```
+
+
+```{r}
+# Exiguobacterium sp. AT1b
+contamdf.prev %>% filter(row.names(contamdf.prev) %in% 360911)
+abundances(physeq)["360911",]
+# Methylobacterium sp.
+contamdf.prev %>% filter(row.names(contamdf.prev) %in% 2696060)
+abundances(physeq)["2696060",]
+```
+
+# Decontamination approach ala Nejman et al.
+
+Details are found under following [link](https://www.science.org/action/downloadSupplement?doi=10.1126%2Fscience.aay9189&file=aay9189_nejman_sm.pdf). A step by step abstract is provided for the decontamination protocol (hit calling pipeline" by Nejman et al. and information about adjustments to our special type of data set are given.
+
+The whole set of Nejman et al. included 1526 samples, and 811 controls (35%). In comparison our set of data has 129 samples with 75 controls (58%)
+
+## Exclude low read count NTCs
+
+1. Nejman: All NTC with read counts < 1000 are excluded (in total 10 samples from 811 samples).  
+
+Here I read in again all NTCs. In comparison to the above deconatam approach I at first will not apply any Perfect filtering (Prevalence filtering) to keep as much reads as possible. Only the filtering for bacterial reads and the tax_glom on species level will be conducted.
+
+```{r}
+physeq.nct1 <- readRDS("raw_data/PhyloSeqObj/2022_06_02_patho_FFPE_tum_panc_ntc_1/physeq_original_50.rds")
+physeq.nct2 <- readRDS("raw_data/PhyloSeqObj/2022_06_02_patho_FFPE_tum_panc_ntc_2/physeq_original_50.rds")
+physeq.nct3 <- readRDS("raw_data/PhyloSeqObj/2022_06_03_patho_FFPE_tum_panc_ntc_3/physeq_original_50.rds")
+physeq.nct4 <- readRDS("raw_data/PhyloSeqObj/2022_06_03_patho_FFPE_tum_panc_ntc_4/physeq_original_50.rds")
+physeq.nct5 <- readRDS("raw_data/PhyloSeqObj/2022_06_04_patho_FFPE_tum_panc_ntc_5/physeq_original_50.rds")
+physeq.nct6 <- readRDS("raw_data/PhyloSeqObj/2022_06_04_patho_FFPE_tum_panc_ntc_6/physeq_original_50.rds")
+physeq.nct7 <- readRDS("raw_data/PhyloSeqObj/2022_06_10_patho_FFPE_tum_panc_ntc_7/physeq_original_50.rds")
+physeq.nct8 <- readRDS("raw_data/PhyloSeqObj/2022_07_13_patho_FFPE_tum_panc_ntc_8/physeq_original_50.rds")
+physeq.nct9 <- readRDS("raw_data/PhyloSeqObj/2022_07_13_patho_FFPE_tum_panc_ntc_9/physeq_original_50.rds")
+physeq.nct10 <- readRDS("raw_data/PhyloSeqObj/2021_12_02_patho_FFPE_self_ntc/physeq_original.rds")
+physeq.nct11 <- readRDS("raw_data/PhyloSeqObj/2022_01_24_patho_FFPE_self_ntc_2/physeq_original.rds")
+
+
+physeq.nct <- merge_phyloseq(physeq.nct1, physeq.nct2, physeq.nct3, physeq.nct4, physeq.nct5, physeq.nct6, physeq.nct7, physeq.nct8, physeq.nct9, physeq.nct10, physeq.nct11)
+
+sample_data(physeq.nct)$sample_side <- ifelse(sample_data(physeq.nct)$sample_side == "paraffin", "paraffin_tumor", sample_data(physeq.nct)$sample_side)
+
+physeq.filt.nct <- subset_taxa(physeq.nct, superkingdom=="Bacteria")
+physeq.filt.nct.s <- tax_glom(physeq.filt.nct, taxrank = "species", NArm = TRUE)
+
+bac.count.ntc <- tibble(bac.count = sample_sums(physeq.filt.nct.s), 
+                        sample = sample_data(physeq.filt.nct.s)$id) %>% 
+  arrange (bac.count)
+
+tibble(
+  ">250 reads" = length(which(bac.count.ntc$bac.count > 250)),
+  ">500 reads" = length(which(bac.count.ntc$bac.count > 500)),
+  ">750 reads" = length(which(bac.count.ntc$bac.count > 750)),
+  ">1000 reads" = length(which(bac.count.ntc$bac.count > 1000)),
+)  %>% 
+  kable (caption="NTC read counts", booktabs =TRUE) %>%
+  kable_classic(full_width = F, html_font = "Cambria") %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive")) 
+
+id.ex <- bac.count.ntc %>% filter(bac.count < 750) %>% pull (sample)
+```
+
+
+According to the table above we choose a cut-off of 750 reads. So we have nearly the same read count as Nejman et al and we still have almost 50% NTC vs. true samples. 
+
+```{r}
+physeq.filt.nct.s <- subset_samples(physeq.filt.nct.s, !(id %in% id.ex))
+```
+
+## Prevalence filtering
+
+2. Nejman et al. applied a prevalence filtering according the rule of thumb (excluding all bacteria with a relative abundance < 10⁻⁴ %)  
+
+```{r}
+p.comb.filt.s <- merge_phyloseq(physeq.filt.nct.s, p.true.filt.s)
+# Nejman prevalence filtering for controls
+
+physeq.filt.nct.s.prev.filt <- transform_sample_counts(physeq.filt.nct.s, function(x){x/sum(x)})
+physeq.filt.nct.s.prev.filt <- filter_taxa(physeq.filt.nct.s.prev.filt, function(x) mean(x) > 1e-4, TRUE)
+
+# Nejman prevalence filtering for true samples
+
+p.true.filt.s.rel <- transform_sample_counts(p.true.filt.s, function(x){x/sum(x)})
+physeq.true.filt.s.prev.filt <- filter_taxa(p.true.filt.s.rel, function(x) mean(x) > 1e-4, TRUE)
+
+# Perfect prevalence filtering
+
+otu = as(otu_table(physeq.filt.nct.s), "matrix")
+if(taxa_are_rows(physeq.filt.nct.s)){otu <- t(otu)}
+otu = as_tibble(otu)
+res_sim <- PERFect_sim(X = otu)
+dim(res_sim$filtX)
+ids.sim<- colnames(res_sim$filtX)
+physeq.filt.nct.s.perfect <-  prune_taxa(ids.sim, physeq.filt.nct.s)
+
+# combining ntc with true samples
+
+p.comb.filt.s.prev <- merge_phyloseq(p.true.filt.s.prev, physeq.filt.nct.s.perfect)
+#agglomerate this new phyloseq
+```
+
+Hereby there were only `r nrow(otu_table(physeq.filt.nct.s.prev.filt))` taxa from initially `r nrow(otu_table(physeq.filt.nct.s))` kept. With our perfect prevalence method we kept `r nrow(otu_table(physeq.filt.nct.s.perfect))`. So our approach does not filter as much as the rule of thumb applied by Nejman et al..
+
+## Filter 1 - Removing global environmental and paraffin contaminants
+
+3. Here Nejman et al. removed all species that were prevalent across more than 7.5% of negative DNA/PCR/Sequencing controls or more than 7.5% of empty paraffin controls. The threshold of 7.5% was determined on the inflection point in the species prevalence abundance distribution (figure S9b in Nejman et al.). Here the x-axis represents the relative prevalence of all species oin control samples plotted against frequencies of species (whole data set (true samples and controls combined)).
+
+### Prevalence - Abundance distribution
+
+![Nejman et al. Prevalence - abundance distribution](add_files/abundance_prev_dist_controls_nejaman.png)
+
+x-axis = prevalence of species in negative controls
+y-axis = proportion of all bacteria
+dot = 
+
+In the following chunk I create such prevalence-abundance distribution for our setting.
+
+```{r}
+prev_ntc = tibble(
+  prev.ntc = prevalence(physeq.filt.nct.s.perfect, detection  = 0, sort = TRUE, count = FALSE),
+  OTU =as.factor(names(prevalence(physeq.filt.nct.s.perfect , detection = 0, sort = TRUE, count = FALSE))) 
+)
+
+prev_true = tibble(
+  prev.true = prevalence(p.true.filt.s.prev, detection  = 0, sort = TRUE, count = FALSE),
+  OTU =as.factor(names(prevalence(p.true.filt.s.prev , detection = 0, sort = TRUE, count = FALSE))) 
+)
+
+prev <- prev_true %>% 
+  left_join(prev_ntc) %>% 
+  mutate(prev.ntc = ifelse(is.na(prev.ntc), 0, prev.ntc),
+         prev.true = ifelse(is.na(prev.true), 0, prev.true))
+
+prev_count <- prev %>%
+  count(prev.ntc) %>%
+  mutate(prop = n/nrow(prev))
+
+# p.comb.filt.s.prev.rel <- transform_sample_counts(p.comb.filt.s.prev, function(x){x/sum(x)})
+# df <- psmelt(p.comb.filt.s.prev.rel)
+# abu <- df %>% group_by(OTU) %>% 
+#   summarise(across(Abundance, mean)) 
+
+# prev_abu <- left_join(abu, prev) %>% 
+#   mutate(prev = ifelse(is.na(prev), 0, prev)) %>% 
+#   arrange (-Abundance) %>% as_tibble()
+
+
+ggplot(prev_count, aes(x= prev.ntc, y = prop))+
+  geom_point()+
+  xlab ("Relative prevalence of species in controls") +
+  ylab("Proportion bacteria") +
+  theme_bw() +
+  ggtitle("Pervalence - Abundance Distribution")+
+  theme( axis.text.x = element_text(size=12),
+        axis.text.y = element_text (size=12),
+        axis.title = element_text(size=14, face="bold"))+
+  theme(legend.position = "bottom",
+        legend.title = element_blank(),
+        legend.background = element_rect(size=0.25, linetype="solid", colour ="black"),
+        legend.key.size = unit(4,"mm"))
+
+prev_count.mod <- prev %>% # rebuild "prev_count" object 
+  count(prev.ntc) %>% # rebuild "prev_count" object 
+  mutate(prop = n/nrow(prev)) %>% # rebuild "prev_count" object 
+  arrange(-prev.ntc) %>% #orders the tibble starting with highest prev.ntc value and ending with lowest prev.ntc
+  mutate(csum = cumsum(n)) %>% #create column containing the cumulative sum of n
+  mutate(cumprop = csum/nrow(prev)) # take the cumsum and divide by the amount of taxa
+# Idea behind this:
+# In previous plots we used to plot the exact number / proportion of bacteria contained in x% of negative controls yielding nejman.figure.jpg / Graph 1 in notepad.
+# Now we plot the proportion of bacteria contained in at least x% of negative controls.
+# x = % of negative controls | y = (sum of all bacteria present in more than x negative controls + bacteria present in x negative controls) / (all bacteria)
+
+
+ggplot(prev_count.mod, aes(x= prev.ntc, y = cumprop))+
+  geom_point()+
+  xlab ("% negative controls") +
+  ylab("Proportion bacteria") +
+  theme_bw() +
+  ggtitle("% of bacteria in at least x ntc - % of negative controls included")+
+  theme( axis.text.x = element_text(size=12),
+        axis.text.y = element_text (size=12),
+        axis.title = element_text(size=14, face="bold"))+
+  theme(legend.position = "bottom",
+        legend.title = element_blank(),
+        legend.background = element_rect(size=0.25, linetype="solid", colour ="black"),
+        legend.key.size = unit(4,"mm"))
+```
+
+### Microbial composition true samples vs. controls
+
+In Comparison, we have another distribution than Nejman et al.. Highly abundant species are found in the most control samples. We further want to make a glimpse in the microbial composition of pooled control samples and true samples to further visualize this finding.
+
+```{r, fig.height=6, fig.width=10}
+physeq.fam <- transform_sample_counts(p.comb.filt.s.prev, function(x){x/sum(x)})
+df.fam.melt <- psmelt(physeq.fam ) 
+
+df.fam.melt$species.v2 <- ifelse(df.fam.melt$Abundance>.1,as.character(df.fam.melt$species), "others")
+df.fam.melt$species.v2 <- factor(df.fam.melt$species.v2, levels=rev(unique(df.fam.melt$species.v2)))
+cols <- c("#9d547c","#56ca63","#a357d6","#419d2a","#525fd6","#8cbe3a","#c944aa","#5ba557","#9e66cb","#c1b735","#6d82ec","#e69728","#6654b0","#799330","#da7fdf","#3c782c","#e44586","#63c996","#dc3f53","#49cbc8","#cf3f29","#4fabda","#da6c2b","#598bd1","#b78c24","#8d4191","#a0b971","#b2386a","#479d71","#ae4341","#2ba198","#e07557","#5361a3","#dda353","#aa98df","#5b6114","#dc89bf","#327243","#e57b94","#277257","#9b62a0","#bbab59","#98495a","#526229","#d8827d","#857624","#9a4a22","#7c7d46","#e3a073","#9e6b33", "lawngreen", "orchid2", "olivedrab1", "ivory3", "darkseagreen", "bisque2", "darkgoldenrod2", "blue2", "skyblue", "seashell2", "turquoise", "tan1", "seagreen2", "palevioletred3", "linen", "steelblue4", "limegreen", "purple3", "khaki3", "snow3", "darkslategray", "magenta2", "palegreen", "salmon", "maroon", "cyan2")
+
+
+ggplot(df.fam.melt, aes(x=id, y=Abundance, fill=species.v2)) +
+  geom_bar(stat="identity") +
+  scale_y_continuous(labels = scales::percent, expand = c(0, 0), limits = c(0, 1.02)) +
+  scale_fill_manual(values = cols) +
+  xlab ("") +
+  ylab("Relative abundance") +
+  theme_bw() +
+  facet_wrap(.~TRUE_control,  scales = "free_x")+
+  ggtitle("Microbial composition at species level")+
+  theme( axis.text.x = element_blank(),
+        axis.text.y = element_text (size=12),
+        axis.title = element_text(size=14, face="bold"))+
+  theme(legend.position = "bottom",
+        legend.title = element_blank(),
+        legend.background = element_rect(size=0.25, linetype="solid", colour ="black"),
+        legend.key.size = unit(4,"mm"))
+
+```
+
+This barplot verify the findings of the prevalence - abundance distribution. The most abundant taxa are found in controls and true samples. Most of them belong to the genus Sphingomonas a known bacterium from the environment.
+
+### Applying filter 1
+
+Following we will apply the filter 1. Here we do not separate the control physeq object in paraffin and the other controls. We have too less buffer/ PCR H2O controls (> 7.5% would mean a whole sample, meaning all taxa from these controls will be removed). Thus we define all species as contaminant which occur in more than 7.5% of ALL controls. That means a species have to occur in `r round(nrow(sample_data(physeq.filt.nct.s.prev.filt))*0.075, digits = 0)` controls to be defined as contaminant.  
+
+#### Nejman threshold 
+
+```{r}
+filter <- 0.075
+# CP 22.11.22 we should not use be using physeq.filt.nct.s for this calculation. Option1) Use physeq.filt.nct.s.perfect as our distribution is also base on physeq.filt.nct.s.perfect Option2) take p.comb.filt.s.prev > subset samples to only contain negative controls via sample_data(p.comb.filt.s.prev)$TRUE_control == control {something like that} > perform calculations: 
+filtered_taxa1 <- tibble(
+  Cont = genefilter_sample(physeq.filt.nct.s, filterfun_sample(function(x) x > 0), A=filter*nsamples(physeq.filt.nct.s)),
+  OTU = names(genefilter_sample(physeq.filt.nct.s, filterfun_sample(function(x) x > 0), A=filter*nsamples(physeq.filt.nct.s)))
+) %>% 
+  arrange (-Cont)
+
+cont.count <- filtered_taxa1 %>% count(Cont) 
+cont.count %>% 
+  kable (caption=paste("Count of contaminants (filter", filter*100, " %)"), booktabs =TRUE) %>%
+  kable_classic(full_width = F, html_font = "Cambria") %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive")) 
+```
+
+##### List of Contaminants
+
+```{r}
+df.fam.melt %>% select(OTU, species) %>% 
+  unique %>% 
+  right_join(filtered_taxa1) %>% 
+  filter(Cont == TRUE) %>% 
+  select(-Cont) %>% 
+  kable (caption=paste("Contaminants (filter", filter*100, " %)"), booktabs =TRUE) %>%
+  kable_classic(full_width = F, html_font = "Cambria") %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive")) %>% 
+  scroll_box(width = "70%", height = "600px")
+```
+
+
+#### Alternative threshold 
+
+Applying the Nejman et al. threshold of 7.5 % will define most taxa as Contaminants (n = `r cont.count[2,2]`) which occur in the controls. However, our prevalence - abundance curve shows a different distribution. Therefore, another cut-off according to this distribution seems reasonable.
+
+```{r}
+filter <- 0.5 #CP setting threshold to 50%
+# CP 22.11.22 we should not use be using physeq.filt.nct.s for this calculation. Option1) Use physeq.filt.nct.s.perfect as our distribution is also base on physeq.filt.nct.s.perfect Option2) take p.comb.filt.s.prev > subset samples to only contain negative controls via sample_data(p.comb.filt.s.prev)$TRUE_control == control {something like that} > perform calculations:
+filtered_taxa1 <- tibble(
+  Cont = genefilter_sample(physeq.filt.nct.s, filterfun_sample(function(x) x > 0), A=filter*nsamples(physeq.filt.nct.s)),
+  OTU = names(genefilter_sample(physeq.filt.nct.s, filterfun_sample(function(x) x > 0), A=filter*nsamples(physeq.filt.nct.s)))
+) %>% 
+  arrange (-Cont)
+
+cont.count <- filtered_taxa1 %>% count(Cont) 
+cont.count %>% 
+  kable (caption=paste("Count of contaminants (filter", filter*100, " %)"), booktabs =TRUE) %>%
+  kable_classic(full_width = F, html_font = "Cambria") %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive")) 
+```
+
+##### List of Contaminants
+
+```{r}
+df.fam.melt %>% select(OTU, species) %>% 
+  unique %>% 
+  right_join(filtered_taxa1) %>% 
+  filter(Cont == TRUE) %>% 
+  select(-Cont) %>% 
+  kable (caption=paste("Contaminants (filter", filter*100, " %)"), booktabs =TRUE) %>%
+  kable_classic(full_width = F, html_font = "Cambria") %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive")) %>% 
+  scroll_box(width = "70%", height = "600px")
+```
+
+Now, only `r cont.count[2,2]` were defined as Contaminants. That means `r round(cont.count[2,2]/sum(cont.count$n)*100, digits = 1)` % of the taxa. In comparison Nejman et al. removed `r round(100-9023/9190*100, digits = 1)` % of the taxa with the first general filter.
+
+### Filter 2 - 3
+
+In order to remove the less prevalent contaminations, Nejman et al. compared taxa prevalences in samples to their prevalences in controls based on the assumption that "even in a low-biomass regime, the non-contaminants will appear in a larger fraction of true samples than in negative controls". This approach veers away from skewed relative abundance data which occur when contaminations are high and relies more heavily on absent/present calls, which along with flooring by relative abundance (see above), reduces the noise variation of presence/absence calling at the very low abundance levels.
+As the RIDE guidelines and additional research indicate, different contamination profiles can vary across processing batches and time.
+Nejman et al. thus shifted to a 'percondition' (a combined tissue+tumor/NAT/normal status) contamination analysis. Therefore, our comparisons between taxon prevalence in samples and controls were done on a per-condition, per-batch basis, comparing samples from the same condition to the controls that were processed alongside them. This was done for the three different processing batch types; DNA extraction batch (filter 2), PCR amplification batch (filter 3), and sequencing library batch (filter 4). **They employed the non-parametric, exact, binomial test on each taxa's prevalence, x=number of successes in the sample & n=sample size to the background p= taxa's prevalence in the relevant batch controls**. Only taxa that passed a p-value cutoff of 0.05 in all batch comparisons (filters 2-4) were considered in the next filtering stage.
+
+We only have controls for filter 2 (DNA extraction) and filter 3 (PCR). First of all we separate the phyloseq objects accordingly (samples + certain control batch (PCR or buffer).
+Here we take the PERfect prevalence filtered physeq object!
+
+For the binominal exact test we need 3 parameters:  
+x = absolute prevalence of a certain taxa in true samples
+n = sample.size (ntc + true samples)
+p = relative prevalence of taxa in negative batch 
+
+If the p-value is less than 0.05 we have to leave the 0 hypothesis and 
+```{r}
+p.comb.pcr <- subset_samples(p.comb.filt.s.prev, sample_side == "PCR_ctrl_H2O" | TRUE_control == "TRUE")
+p.comb.buffer <- subset_samples(p.comb.filt.s.prev, sample_side == "buffer" | TRUE_control == "TRUE")
+p.comb.paraffin <- subset_samples(p.comb.filt.s.prev, sample_side == "paraffin_tumor" |  sample_side == "paraffin_normal" | TRUE_control == "TRUE")
+```
+
+We then removed all species identified in filter 1 (defined in ont.filt1) from both phyloseq objects. 
+
+```{r}
+cont.filt1 <- df.fam.melt %>% select(OTU, species) %>% 
+  unique %>% 
+  right_join(filtered_taxa1) %>% 
+  filter(Cont == TRUE) %>% 
+  pull(species)
+
+p.comb.pcr <- subset_taxa(p.comb.pcr,!species %in% cont.filt1)
+p.comb.buffer <- subset_taxa(p.comb.buffer,!species %in% cont.filt1)
+p.comb.paraffin <- subset_taxa(p.comb.paraffin,!species %in% cont.filt1)
+```
+
+#### DNA extraction filter
+
+```{r}
+
+# df <- psmelt(p.comb.buffer)
+# species <- df %>% filter(OTU == "2711215") %>% pull(species) %>% unique()
+
+
+
+p.comb.paraffin %>%
+  transform("compositional") %>%
+  subset_samples(sample_side == "paraffin_tumor") %>%
+  psmelt() %>%
+  select(Abundance, species) %>%
+  head(10)
+
+p.comb.paraffin %>%
+  transform("compositional") %>%
+  subset_samples(sample_side == "paraffin_tumor") %>%
+  psmelt() %>%
+  filter(Abundance != 0) %>% 
+  select(Abundance, species) %>%
+  tail(10)
+```
+
+CP 21.11 
+small rework of workflow for cont.filt1 and filter2 setup: {CP 23.11 - small changed into large}
+We calculate which taxa are contaminants according to filter1.
+We remove these contaminants from the p.comb.filt.s.prev and recreate the phyloseq-objects for all 3 conditions
+
+```{r}
+cont.filt1 <- df.fam.melt %>% select(OTU, species) %>% 
+  unique %>% 
+  right_join(filtered_taxa1) %>% 
+  filter(Cont == TRUE) %>% 
+  pull(species)
+
+
+dim(otu_table(p.comb.filt.s.prev))
+
+#the subset marks all species present in cont.filt1 as FALSE - they are dropped
+# issue: the subset also removes "2589076" - "Paracoccus sp." & "702113" - "Novosphingobium sp." - they are present in p.true.filt.s.prev BUT not in filtered_taxa1.. why?
+#answer: OTU-"2589076" belongs to species "Paracoccus sp." but is only present in true_samples :: OTU-"2500532" belongs to species "Paracoccus sp." but is only present in negative controls - 
+#answer: OTU-"702113" belongs to species ""Novosphingobium sp." but is only present in true_samples :: OTU-"1016987" belongs to species "Novosphingobium sp." but is only present in negative controls -
+#plot(x = seq(1:nsamples(p.comb.filt.s.prev)),y = otu_table(p.comb.filt.s.prev)["2589076",])
+#plot(x = seq(1:nsamples(p.comb.filt.s.prev)),y = otu_table(p.comb.filt.s.prev)["2500532",])
+#plot(x = seq(1:nsamples(p.comb.filt.s.prev)),y = otu_table(p.comb.filt.s.prev)["702113",])
+##plot(x = seq(1:nsamples(p.comb.filt.s.prev)),y = otu_table(p.comb.filt.s.prev)["1016987",])
+#explanation: we create p.comb.filt.s.prev by merging two phyloseq objects. However we do not agglomerate the taxa therefore it is possible (and which happened here in this case) that 2 different OTUs exist describing the same species. This tells us the bacteria are genetically related (same species) but different enough to have different OTU-handles (same OTU-handle if similarity >= 97%). As we remove based on species-names, these two are also removed.  
+
+#p.comb.filt.s.prev3 <- prune_taxa(taxa = taxa_names(p.comb.filt.s.prev)[1:5],x = p.comb.filt.s.prev)
+#dim(otu_table(p.comb.filt.s.prev3))
+#this shows: we can remove based on OTU handle (the OTU number) via prune_taxa() as long as we store the otu handle in a character vector.
+
+#prune_taxa expects a character vector containing the OTUs we want to keep
+#we take the vector containing all OTUs, we remove OTUs from filter1 and keep the rest
+base_taxa <- taxa_names(p.comb.filt.s.prev) #all OTUs in p.comb.filt.s.prev
+filter1_otu <- df.fam.melt %>% select(OTU, species) %>% 
+  unique %>% 
+  right_join(filtered_taxa1) %>% 
+  filter(Cont == TRUE) #similar to cont.filter1 BUT it contains OTUs {number} and species {name} for all bacteria classified as contaminants through filter1
+head(filter1_otu)
+filter1_otu <- filter1_otu %>% pull(OTU) #pull OTUs and store in a character vector
+
+remove_these <- filter1_otu #rename: we want to remove these OTUs
+
+str_detect(string = base_taxa, pattern = paste(remove_these, collapse = "|"))
+#this detects
+
+taxa_to_keep <- str_remove_all(taxa_names(p.comb.filt.s.prev), paste(remove_these, collapse = "|")) #remove contaminant OTUs via str_remove_all
+head(taxa_to_keep) #take a look @ taxa_to_keep | now instead of contaminants we have empty elements {""}
+
+taxa_to_keep = taxa_to_keep[taxa_to_keep!= ""] #we remove these empty elements | we are left with OTUs we want to keep
+p.comb.filt.s.prev3 <- prune_taxa(taxa = taxa_to_keep, x = p.comb.filt.s.prev)
+dim(otu_table(p.comb.filt.s.prev3)) #somehow one OTU is removed which is not element of cont.filt1
+#we have p.comb.filt.s.prev3 : taking p.comb.filt.s.prev after removing contaminants from cont.filt1
+taxa_removed1 <- setdiff(x = taxa_names(p.comb.filt.s.prev),y = taxa_names(p.comb.filt.s.prev3)) #difference between set of taxa contained in both phyloseq objects
+setdiff(x = taxa_removed1,y = filter1_otu)
+#result "261292" -> this taxa is also removed: why?
+#tax_table(p.comb.filt.s.prev)["261292",]
+#plot(x = seq(1:nsamples(p.comb.filt.s.prev)),y = otu_table(p.comb.filt.s.prev)["261292",]) 
+# probably not important taxa
+# why is it removed?
+#what we wanted to do:
+#[1] get OTU of p.comb.filt.s.prev {all taxa contained in our merged phyloseq}
+#[2] get OTU of filter1 {all taxa filtered through filter 1} 
+#[3] removed filter1 OTU from OTU present in our merged phyloseq
+#[4] store the remaining OTU in taxa_to keep
+#[5] prune p.comb.filt.s.prev using taxa_to_keep
+
+base_taxa <- taxa_names(p.comb.filt.s.prev) #all OTUs in p.comb.filt.s.prev
+filter1_otu <- df.fam.melt %>% select(OTU, species) %>% 
+  unique %>% 
+  right_join(filtered_taxa1) %>% 
+  filter(Cont == TRUE) #similar to cont.filter1 BUT it contains OTUs {number} and species {name} for all bacteria classified as contaminants through filter1
+head(filter1_otu)
+filter1_otu <- filter1_otu %>% pull(OTU) #pull OTUs and store in a character vector
+
+
+#this detects 21 elements of base - remove_these is of length 20
+# now I know why!
+# inside the pattern we have OTU 1292 {species : "Staphylococcus warneri"} 
+# the erroneously affected OTU 261292 {species : "Nitrosomonas sp."} contains these numbers {1292} in exactly this ordering resulting in being filtered!
+which(str_detect(string = base_taxa, pattern = paste(remove_these, collapse = "|")) == TRUE) #indeces of removed elements of base_taxa
+base_taxa[(which(str_detect(string = base_taxa, pattern = paste(remove_these, collapse = "|")) == TRUE))] #OTU of removed elements of base_taxa
+base_taxa[-(which(str_detect(string = base_taxa, pattern = paste(remove_these, collapse = "|")) == TRUE))] == taxa_to_keep #we take base_taxa and remove those OTU that match the pattern based on str_detect. We compare the modified base_taxa object with taxa_to_keep. Taxa_to_keep is {base_taxa - contaminants (based on pattern) using str_remove_all}. Those should be the same, but are not. By using == we can track when the deviation begins. Error is at position 464 / OTU 26 {see explanation below}
+
+#see above explanaition for unexpected filtering behaviour
+# 21 taxa are removed - length(taxa_to_keep) = 1360 -> which OTU is in there??
+#Answer: OTU 261292:: while removing our contaminants we remove the OTU 1292. this changes 261292 into 26. As a result taxa_to_keep consists of 1360 OTUs, including the wrongly changed one.
+
+#Error is at position 464 because 482 {original position of OTU 261292} - 18 {amount of OTU removed beforehand} = 464
+
+#How do we change this error?
+#find error position 
+#use element of basa_taxa to fill the gap
+#error is at position 482 for base_taxa / 464 for taxa_to_keep
+
+error_position <- which(str_detect(string = base_taxa, pattern = paste(remove_these, collapse = "|")) == TRUE)[which((which(str_detect(string = base_taxa, pattern = paste(remove_these, collapse = "|")) == TRUE)) == 482)] - (which((which(str_detect(string = base_taxa, pattern = paste(remove_these, collapse = "|")) == TRUE)) == 482)-1)
+#in case of a higher amount of errors I would advise using a iterative solution starting from the last error_position working towards the first error_position just to not make to calculation harder {changing indices}
+taxa_to_keep[error_position] <- base_taxa[which(str_detect(string = base_taxa, pattern = paste(remove_these, collapse = "|")) == TRUE)][which(str_remove_all(string = base_taxa[(which(str_detect(string = base_taxa, pattern = paste(remove_these, collapse = "|")) == TRUE))], pattern = paste(remove_these, collapse = "|")) != "")]
+#alternativ
+#  base_taxa[which(base_taxa == base_taxa[which(str_detect(string = base_taxa, pattern = paste(remove_these, collapse = "|")) == TRUE)][which(str_remove_all(string = base_taxa[(which(str_detect(string = base_taxa, pattern = paste(remove_these, collapse = "|")) == TRUE))], pattern = paste(remove_these, collapse = "|")) != "")])]
+
+str_remove_all(string = base_taxa[(which(str_detect(string = base_taxa, pattern = paste(remove_these, collapse = "|")) == TRUE))], pattern = paste(remove_these, collapse = "|"))
+#""   ""   ""   ""   ""   ""   ""   ""   ""   ""   ""   ""   ""   ""   ""   ""   ""   ""   "26" ""   ""
+which(str_remove_all(string = base_taxa[(which(str_detect(string = base_taxa, pattern = paste(remove_these, collapse = "|")) == TRUE))], pattern = paste(remove_these, collapse = "|")) != "")
+#19 #this give us the index of non-empty elements -> those we removed erroneously
+which(base_taxa == base_taxa[which(str_detect(string = base_taxa, pattern = paste(remove_these, collapse = "|")) == TRUE)][which(str_remove_all(string = base_taxa[(which(str_detect(string = base_taxa, pattern = paste(remove_these, collapse = "|")) == TRUE))], pattern = paste(remove_these, collapse = "|")) != "")])
+#we put it all together
+
+#How to "never" run into this error again?
+#rerun str_remove on our str_detect subset: str_remove_all(string = str_detect(x,y),pattern = y) CAVE: with actual results and logical as an output 
+#str_detect results in logcial {TRUE if pattern is found, FALSE else}
+#convert logical into index position via which(str_detect(x,y) == TRUE)
+#apply indeces to data structure corresponding to pattern elements {ie pattern consists of OTUs, we apply indeces to base_taxa such that output is OTU}
+#run str_remove_all on this output, using the same pattern used in its creation {pattern of str_detect}
+#this should result in an empty string in case of correct execution
+
+#we see our execution was not correct {for in depth explanation for read above}
+
+
+dim(otu_table(p.comb.filt.s.prev3))
+dim(otu_table(p.comb.filt.s.prev))
+p.comb.filt.s.prev3 <- prune_taxa(taxa = taxa_to_keep, x = p.comb.filt.s.prev) #remove contaminants detected in filter1
+dim(otu_table(p.comb.filt.s.prev3)) # p.comb.filt.s.prev3 is now completely free of contaminants detected in filter1 
+```
+
+In the previous chunk we have already created a new phyloseq_object {p.comb.filt.s.prev3} without any contaminants from filter1
+
+```{r setup filter2 - post CP modification - 23.11}
+p.comb.pcr <- subset_samples(p.comb.filt.s.prev3, sample_side == "PCR_ctrl_H2O" | TRUE_control == "TRUE")
+p.comb.buffer <- subset_samples(p.comb.filt.s.prev3, sample_side == "buffer" | TRUE_control == "TRUE")
+p.comb.paraffin <- subset_samples(p.comb.filt.s.prev3, sample_side == "paraffin_tumor" |  sample_side == "paraffin_normal" | TRUE_control == "TRUE")
+```
+
+
+```{r}
+# start testing via binomial for taxa prevalence
+# CP starts here
+# testing binomial for taxa prevalent in paraffin
+
+#p.comb.paraffin contains: /n samples:: all TRUE_samples, all paraffin_ntc /n taxa:: all taxa from p.comb.filt.s.prev MINUS taxa from cont.filt1
+
+p.comb.paraffin.true <- subset_samples(p.comb.paraffin, TRUE_control == "TRUE") #only true samples
+p.comb.paraffin.ntc <- subset_samples(p.comb.paraffin, TRUE_control == "control") #only ntc from sample_side
+
+# x = amount of true_samples where species is present
+# n = amount of true_samples considered
+# p = (amount of control_samples where is species is present) / (amount of control_samples considered)
+bin.data.paraffin <- data.frame(x = prevalence(p.comb.paraffin.true, detection = 0, count = TRUE),
+       n = nsamples(p.comb.paraffin.true),
+       p = prevalence(p.comb.paraffin.ntc, detection = 0, count = FALSE))
+
+vec0 <- seq(1,nrow(bin.data.paraffin)) #vector to cycle thru for binom.test
+
+for (i in vec0) {
+  vec0[i] <- binom.test(x = bin.data.paraffin[i,1],n = bin.data.paraffin[i,2],p = bin.data.paraffin[i,3],alternative = "greater")$p.value
+} #perform binom.test. fetch needed data from row in bin.data.paraffin. store p.value from binom.test in vector: index in vector corresponds to row from bin.data.paraffin 
+
+bin.data.paraffin$p.value <- vec0 #add vec0 {containing p.values from binom.test} to bin.data.paraffin as a column 
+head(bin.data.paraffin) #check bin.data.paraffin
+bin.data.paraffin <- bin.data.paraffin %>% mutate(sig_p <- if_else(p.value < 0.05, TRUE, FALSE)) #add column indicating {TRUE / FALSE} if p.value is below 5%
+colnames(bin.data.paraffin)[5] <- "sign.p" #rename indicator column as sign.p
+
+# testing binomial for taxa prevalent in buffer
+
+#p.comb.buffer contains: /n samples:: all TRUE_samples, all buffer:ntc /n taxa:: all taxa from p.comb.filt.s.prev MINUS taxa from cont.filt1
+
+p.comb.buffer.true <- subset_samples(p.comb.buffer, TRUE_control == "TRUE") #only true samples
+p.comb.buffer.ntc <- subset_samples(p.comb.buffer, TRUE_control == "control") #only ntc from sample_side
+
+# x = amount of true_samples where species is present
+# n = amount of true_samples considered
+# p = (amount of control_samples where is species is present) / (amount of control_samples considered)
+bin.data.buffer <- data.frame(x = prevalence(p.comb.buffer.true, detection = 0, count = TRUE),
+       n = nsamples(p.comb.buffer.true),
+       p = prevalence(p.comb.buffer.ntc, detection = 0, count = FALSE))
+
+vec0 <- seq(1,nrow(bin.data.buffer)) #vector to cycle thru for binom.test
+
+for (i in vec0) {
+  vec0[i] <- binom.test(x = bin.data.buffer[i,1],n = bin.data.buffer[i,2],p = bin.data.buffer[i,3],alternative = "greater")$p.value
+} #perform binom.test. fetch needed data from row in bin.data.buffer. store p.value from binom.test in vector: index in vector corresponds to row from bin.data.buffer 
+
+bin.data.buffer$p.value <- vec0 #add vec0 {containing p.values from binom.test} to bin.data.buffer as a column 
+head(bin.data.buffer) #check bin.data.buffer
+bin.data.buffer <- bin.data.buffer %>% mutate(sig_p <- if_else(p.value < 0.05, TRUE, FALSE)) #add column indicating {TRUE / FALSE} if p.value is below 5%
+colnames(bin.data.buffer)[5] <- "sign.p" #rename indicator column as sign.p
+head(bin.data.buffer)
+
+# testing binomial for taxa prevalent in pcr
+
+#p.comb.pcr contains: /n samples:: all TRUE_samples, all pcr:ntc /n taxa:: all taxa from p.comb.filt.s.prev MINUS taxa from cont.filt1
+
+p.comb.pcr.true <- subset_samples(p.comb.pcr, TRUE_control == "TRUE") #only true samples
+p.comb.pcr.ntc <- subset_samples(p.comb.pcr, TRUE_control == "control") #only ntc from sample_side
+
+# x = amount of true_samples where species is present
+# n = amount of true_samples considered
+# p = (amount of control_samples where is species is present) / (amount of control_samples considered)
+bin.data.pcr <- data.frame(x = prevalence(p.comb.pcr.true, detection = 0, count = TRUE),
+       n = nsamples(p.comb.pcr.true),
+       p = prevalence(p.comb.pcr.ntc, detection = 0, count = FALSE))
+
+vec0 <- seq(1,nrow(bin.data.pcr)) #vector to cycle thru for binom.test
+
+for (i in vec0) {
+  vec0[i] <- binom.test(x = bin.data.pcr[i,1],n = bin.data.pcr[i,2],p = bin.data.pcr[i,3],alternative = "greater")$p.value
+} #perform binom.test. fetch needed data from row in bin.data.pcr. store p.value from binom.test in vector: index in vector corresponds to row from bin.data.pcr 
+
+bin.data.pcr$p.value <- vec0 #add vec0 {containing p.values from binom.test} to bin.data.pcr as a column 
+head(bin.data.pcr) #check bin.data.pcr
+bin.data.pcr <- bin.data.pcr %>% mutate(sig_p <- if_else(p.value < 0.05, TRUE, FALSE)) #add column indicating {TRUE / FALSE} if p.value is below 5%
+colnames(bin.data.pcr)[5] <- "sign.p" #rename indicator column as sign.p
+head(bin.data.pcr)
+
+# create df containing the indicator rows of all 3 conditions
+pvaluedf <- data.frame(paraffin = bin.data.paraffin$sign.p,
+                       buffer = bin.data.buffer$sign.p,
+                       pcr = bin.data.pcr$sign.p,
+                       row.names = rownames(bin.data.paraffin)) #give dataframe the correct rownames. these are OTUs
+
+pvaluedf <- pvaluedf %>% filter(paraffin == TRUE & buffer == TRUE & pcr == TRUE) #filter those that are TRUE for all 3 rows
+# we keep the remaining OTUs {rownames(pvaluedf_true)}
+
+taxa_kept2 <- data.frame(OTU = rownames(pvaluedf),
+                           species = p.comb.filt.s.prev@tax_table@.Data[rownames(pvaluedf),"species"])# WE KEEP TAXA IN THIS TABLE
+
+# Question: ntaxa(bin.data.paraffin) = 1290, ntaxa(p.comb.filt.s.prev) = 1380, cont.filt1 contains only 78 taxa? where is the rest??
+
+p.filt2.removed <- data.frame(paraffin = bin.data.paraffin$sign.p,
+                       buffer = bin.data.buffer$sign.p,
+                       pcr = bin.data.pcr$sign.p,
+                       row.names = rownames(bin.data.paraffin)) %>%
+  filter(!(paraffin == TRUE & buffer == TRUE & pcr == TRUE)) 
+p.filt2.removed <- p.filt2.removed %>% mutate(OTU = row.names(p.filt2.removed)) %>% mutate(species = p.comb.paraffin@tax_table@.Data[rownames(p.filt2.removed),"species"] )
+
+filtered_taxa2 <- data.frame(OTU = rownames(p.filt2.removed),
+                             species =  p.filt2.removed$species)# WE DROP TAXA IN THIS TABLE
+
+cont_table_filter2 <- data.frame( contaminant = c("TRUE","FALSE"),
+           n = c(nrow(filtered_taxa2),nrow(taxa_kept2))) # This is the total number of TAXA: those we DROP and those we KEEP
+# we start with nrow(p.comb.paraffin)
+# we end with cont_table_filter2 
+```
+CP:
+```{r }
+# we plan to put everything together:
+# take a look at sheet from {24.11.22}
+p.comb.filt.s.prev #phyloseq_obj created thru merge of p.true.filt.s.prev & physeq.filt.nct.s.perfect
+p.comb.filt.s.prev3 #phyloseq_obj after removing filter1_contaminants from p.comb.filt.s.prev
+p.comb.prev.postf1f2 <- prune_taxa(taxa = taxa_kept2$OTU,x = p.comb.filt.s.prev3) #we remove filter2_contaminants from p.comb.filt.s.prev3
+p.true.prev.postf1f2 <- subset_samples(p.comb.prev.postf1f2, TRUE_control == "TRUE") #subset to true_samples
+
+#alternative
+p.true.filt.s.prev #phyloseq_obj containing true_samples
+p.true.postf1_alt <- prune_taxa(taxa = taxa_to_keep, x = p.true.filt.s.prev) #remove contaminants from filter1
+p.true.prev.postf1f2_alt <- prune_taxa(taxa = taxa_kept2$OTU, x = p.true.postf1_alt) #remove contaminants from filter2
+
+#plot seq-depth
+plot(y = sample_sums(p.true.filt.s),x = seq(1,nsamples(p.true.filt.s)), xlab = "Sample index", ylab= "Seq-depth", main= "true samples")
+
+plot(y = sample_sums(p.true.filt.s.prev),x = seq(1,nsamples(p.true.filt.s.prev)), xlab = "Sample index", ylab= "Seq-depth", main= "true samples post PERFect") # we started with this seq-depth for true_samples 
+
+plot(y = sample_sums(p.true.prev.postf1f2),x = seq(1,nsamples(p.true.prev.postf1f2)), xlab = "Sample index", ylab= "Seq-depth", main= "true samples post PERFect/Nejman")  # we ended with this seq_depth for true_samples
+#notice that the last 10 samples have a far larger seq-depth than the rest
+
+plot(x=seq(1,nsamples(p.true.prev.postf1f2)),y = otu_table(p.true.prev.postf1f2)["358220",],xlab= "Sample index", ylab= "Count",main = paste("counts of OTU 358220 in true samples", "\nusing cleaned data 30.11.22")) #plot counts for specific OTU
+
+sort(p.true.prev.postf1f2@otu_table@.Data[a,58],decreasing = TRUE)
+otu_table(p.true.prev.postf1f2)[c("358220","702113"),] # get counts of the two most highly prevelent OTUs in sample 58
+tax_table(p.true.prev.postf1f2)[c("358220","702113"),] # get tax_information for these two OTUs - they are contaminants
+
+a <- which(otu_table(p.true.prev.postf1f2)[,58] != 0) #index of OTU with count > 0 in sample_no. 58
+plot(x = seq(1:length(a)),y = p.true.prev.postf1f2@otu_table@.Data[a,58]) #counts of OTU that are not 0 in sample58 for sample58
+plot(x = seq(1:length(a)),y = p.true.prev.postf1f2@otu_table@.Data[a,57]) #counts of OTU that are not 0 in sample58 for sample57
+plot(x = seq(1:length(a)),y = p.true.prev.postf1f2@otu_table@.Data[a,10]) #counts of OTU that are not 0 in sample58 for sample10
+plot(x = seq(1:length(a)),y = p.true.prev.postf1f2@otu_table@.Data[a,20]) #counts of OTU that are not 0 in sample58 for sample20
+#most of the OTUs in "a" are not as expressed in the overall true samples as in the last 10 samples 
+
+```
+
+```{r generate tree of clean phyloseq}
+#create tree
+phy_tree = rtree(ntaxa(p.true.prev.postf1f2), rooted=TRUE, tip.label=taxa_names(p.true.prev.postf1f2))
+p.true.prev.postf1f2  <- merge_phyloseq(p.true.prev.postf1f2 , phy_tree)
+```
+
+```{r microbial composition of p.true.prev.postf1f2}
+physeq.fam <- transform_sample_counts(p.true.prev.postf1f2, function(x){x/sum(x)})
+df.fam.melt <- psmelt(physeq.fam ) 
+
+df.fam.melt$species.v2 <- ifelse(df.fam.melt$Abundance>.1,as.character(df.fam.melt$species), "others")
+df.fam.melt$species.v2 <- factor(df.fam.melt$species.v2, levels=rev(unique(df.fam.melt$species.v2)))
+cols <- c("#9d547c","#56ca63","#a357d6","#419d2a","#525fd6","#8cbe3a","#c944aa","#5ba557","#9e66cb","#c1b735","#6d82ec","#e69728","#6654b0","#799330","#da7fdf","#3c782c","#e44586","#63c996","#dc3f53","#49cbc8","#cf3f29","#4fabda","#da6c2b","#598bd1","#b78c24","#8d4191","#a0b971","#b2386a","#479d71","#ae4341","#2ba198","#e07557","#5361a3","#dda353","#aa98df","#5b6114","#dc89bf","#327243","#e57b94","#277257","#9b62a0","#bbab59","#98495a","#526229","#d8827d","#857624","#9a4a22","#7c7d46","#e3a073","#9e6b33", "lawngreen", "orchid2", "olivedrab1", "ivory3", "darkseagreen", "bisque2", "darkgoldenrod2", "blue2", "skyblue", "seashell2", "turquoise", "tan1", "seagreen2", "palevioletred3", "linen", "steelblue4", "limegreen", "purple3", "khaki3", "snow3", "darkslategray", "magenta2", "palegreen", "salmon", "maroon", "cyan2")
+
+
+ggplot(df.fam.melt, aes(x=id, y=Abundance, fill=species.v2)) +
+  geom_bar(stat="identity") +
+  scale_y_continuous(labels = scales::percent, expand = c(0, 0), limits = c(0, 1.02)) +
+  scale_fill_manual(values = cols) +
+  xlab ("") +
+  ylab("Relative abundance") +
+  theme_bw() +
+  ggtitle("Microbial composition at species level")+
+  theme( axis.text.x = element_blank(),
+        axis.text.y = element_text (size=12),
+        axis.title = element_text(size=14, face="bold"))+
+  theme(legend.position = "bottom",
+        legend.title = element_blank(),
+        legend.background = element_rect(size=0.25, linetype="solid", colour ="black"),
+        legend.key.size = unit(4,"mm"))
+```
+
+
+```{r change order: first abundance, then prevalance}
+#load data
+p.true.filt.s #true samples without PERFect
+physeq.filt.nct.s #nct samples without PERFect 
+p.comb.filt.s <- merge_phyloseq(physeq.filt.nct.s, p.true.filt.s)
+
+#perform filter1
+  #plot how many taxa are present in atleast x% of negative controls
+prev_ntc = tibble(
+  prev.ntc = prevalence(physeq.filt.nct.s, detection  = 0, sort = TRUE, count = FALSE),
+  OTU =as.factor(names(prevalence(physeq.filt.nct.s , detection = 0, sort = TRUE, count = FALSE))) 
+)
+
+prev_true = tibble(
+  prev.true = prevalence(p.true.filt.s, detection  = 0, sort = TRUE, count = FALSE),
+  OTU =as.factor(names(prevalence(p.true.filt.s , detection = 0, sort = TRUE, count = FALSE))) 
+)
+
+prev <- prev_true %>% 
+  left_join(prev_ntc) %>% 
+  mutate(prev.ntc = ifelse(is.na(prev.ntc), 0, prev.ntc),
+         prev.true = ifelse(is.na(prev.true), 0, prev.true))
+
+prev_count <- prev %>%
+  count(prev.ntc) %>%
+  mutate(prop = n/nrow(prev))
+
+# p.comb.filt.s.prev.rel <- transform_sample_counts(p.comb.filt.s.prev, function(x){x/sum(x)})
+# df <- psmelt(p.comb.filt.s.prev.rel)
+# abu <- df %>% group_by(OTU) %>% 
+#   summarise(across(Abundance, mean)) 
+
+# prev_abu <- left_join(abu, prev) %>% 
+#   mutate(prev = ifelse(is.na(prev), 0, prev)) %>% 
+#   arrange (-Abundance) %>% as_tibble()
+
+
+ggplot(prev_count, aes(x= prev.ntc, y = prop))+
+  geom_point()+
+  xlab ("Relative prevalence of species in controls") +
+  ylab("Proportion bacteria") +
+  theme_bw() +
+  ggtitle("Pervalence - Abundance Distribution")+
+  theme( axis.text.x = element_text(size=12),
+        axis.text.y = element_text (size=12),
+        axis.title = element_text(size=14, face="bold"))+
+  theme(legend.position = "bottom",
+        legend.title = element_blank(),
+        legend.background = element_rect(size=0.25, linetype="solid", colour ="black"),
+        legend.key.size = unit(4,"mm"))
+
+prev_count.mod <- prev %>% # rebuild "prev_count" object 
+  count(prev.ntc) %>% # rebuild "prev_count" object 
+  mutate(prop = n/nrow(prev)) %>% # rebuild "prev_count" object 
+  arrange(-prev.ntc) %>% #orders the tibble starting with highest prev.ntc value and ending with lowest prev.ntc
+  mutate(csum = cumsum(n)) %>% #create column containing the cumulative sum of n
+  mutate(cumprop = csum/nrow(prev)) # take the cumsum and divide by the amount of taxa
+# Idea behind this:
+# In previous plots we used to plot the exact number / proportion of bacteria contained in x% of negative controls yielding nejman.figure.jpg / Graph 1 in notepad.
+# Now we plot the proportion of bacteria contained in at least x% of negative controls.
+# x = % of negative controls | y = (sum of all bacteria present in more than x negative controls + bacteria present in x negative controls) / (all bacteria)
+
+
+ggplot(prev_count.mod, aes(x= prev.ntc, y = cumprop))+
+  geom_point()+
+  xlab ("% negative controls") +
+  ylab("Proportion bacteria") +
+  theme_bw() +
+  ggtitle("% of bacteria in at least x ntc - % of negative controls included")+
+  theme( axis.text.x = element_text(size=12),
+        axis.text.y = element_text (size=12),
+        axis.title = element_text(size=14, face="bold"))+
+  theme(legend.position = "bottom",
+        legend.title = element_blank(),
+        legend.background = element_rect(size=0.25, linetype="solid", colour ="black"),
+        legend.key.size = unit(4,"mm"))
+# based on graph set filter
+filter <- 0.5
+#calculate filtered_taxa1
+filtered_taxa1 <- tibble(
+  Cont = genefilter_sample(physeq.filt.nct.s, filterfun_sample(function(x) x > 0), A=filter*nsamples(physeq.filt.nct.s)),
+  OTU = names(genefilter_sample(physeq.filt.nct.s, filterfun_sample(function(x) x > 0), A=filter*nsamples(physeq.filt.nct.s)))
+) %>% 
+  arrange (-Cont)
+#calculate filter1_contaminants
+physeq.fam <- transform_sample_counts(p.comb.filt.s, function(x){x/sum(x)})
+df.fam.melt <- psmelt(physeq.fam ) 
+df.fam.melt$species.v2 <- ifelse(df.fam.melt$Abundance>.1,as.character(df.fam.melt$species), "others")
+
+base_taxa <- taxa_names(p.comb.filt.s) #all OTUs in p.comb.filt.s
+filter1_otu <- df.fam.melt %>% select(OTU, species) %>% 
+  unique %>% 
+  right_join(filtered_taxa1) %>% 
+  filter(Cont == TRUE) #similar to cont.filter1 BUT it contains OTUs {number} and species {name} for all bacteria classified as contaminants through filter1
+head(filter1_otu)
+filter1_otu <- filter1_otu %>% pull(OTU) #pull OTUs and store in a character vector
+
+remove_these <- filter1_otu #rename: we want to remove these OTUs
+
+filter1_logical <- str_detect(string = base_taxa, pattern = paste(remove_these, collapse = "|")) #this is a logical for index positions that match the pattern 
+filter1_match <- which(filter1_logical == TRUE)
+str_remove_all(string = base_taxa[filter1_match], pattern = paste(remove_these, collapse = "|")) #this applies str_remove_all from our re-produced pattern: if this is an empty string our pattern matches perfectly
+#output: ""   ""   ""   ""   ""   ""   ""   ""   ""   ""   ""   ""   ""   ""   ""   ""   ""   ""   ""   ""   "26" "12"
+#the last to elements of filter1_match are erroneous
+filter1_match[c(21,22)] # this yields 583 741
+base_taxa[c(583,741)]
+
+taxa_to_keep <- str_remove_all(string = base_taxa, pattern = paste(remove_these, collapse = "|"))
+head(taxa_to_keep)
+taxa_to_keep = taxa_to_keep[taxa_to_keep!= ""]
+# now look which taxa_to_keep == 26 / 12
+which(taxa_to_keep == "26");which(taxa_to_keep == "12") # [1] 563 [1] 721
+#fix error
+taxa_to_keep[563] <- base_taxa[583]; taxa_to_keep[721] <- base_taxa[741]
+p.comb.filt.s3 <- prune_taxa(taxa = taxa_to_keep, x = p.comb.filt.s)
+#perform filter2
+
+#create 3 condition phyloseq_objs
+p.comb.pcr <- subset_samples(p.comb.filt.s3, sample_side == "PCR_ctrl_H2O" | TRUE_control == "TRUE")
+p.comb.buffer <- subset_samples(p.comb.filt.s3, sample_side == "buffer" | TRUE_control == "TRUE")
+p.comb.paraffin <- subset_samples(p.comb.filt.s3, sample_side == "paraffin_tumor" |  sample_side == "paraffin_normal" | TRUE_control == "TRUE")
+#perform binomial.test
+p.comb.paraffin.true <- subset_samples(p.comb.paraffin, TRUE_control == "TRUE") #only true samples
+p.comb.paraffin.ntc <- subset_samples(p.comb.paraffin, TRUE_control == "control") #only ntc from sample_side
+
+# x = amount of true_samples where species is present
+# n = amount of true_samples considered
+# p = (amount of control_samples where is species is present) / (amount of control_samples considered)
+bin.data.paraffin <- data.frame(x = prevalence(p.comb.paraffin.true, detection = 0, count = TRUE),
+       n = nsamples(p.comb.paraffin.true),
+       p = prevalence(p.comb.paraffin.ntc, detection = 0, count = FALSE))
+
+vec0 <- seq(1,nrow(bin.data.paraffin)) #vector to cycle thru for binom.test
+
+for (i in vec0) {
+  vec0[i] <- binom.test(x = bin.data.paraffin[i,1],n = bin.data.paraffin[i,2],p = bin.data.paraffin[i,3],alternative = "greater")$p.value
+} #perform binom.test. fetch needed data from row in bin.data.paraffin. store p.value from binom.test in vector: index in vector corresponds to row from bin.data.paraffin 
+
+bin.data.paraffin$p.value <- vec0 #add vec0 {containing p.values from binom.test} to bin.data.paraffin as a column 
+head(bin.data.paraffin) #check bin.data.paraffin
+bin.data.paraffin <- bin.data.paraffin %>% mutate(sig_p <- if_else(p.value < 0.05, TRUE, FALSE)) #add column indicating {TRUE / FALSE} if p.value is below 5%
+colnames(bin.data.paraffin)[5] <- "sign.p" #rename indicator column as sign.p
+
+# testing binomial for taxa prevalent in buffer
+
+#p.comb.buffer contains: /n samples:: all TRUE_samples, all buffer:ntc /n taxa:: all taxa from p.comb.filt.s.prev MINUS taxa from cont.filt1
+
+p.comb.buffer.true <- subset_samples(p.comb.buffer, TRUE_control == "TRUE") #only true samples
+p.comb.buffer.ntc <- subset_samples(p.comb.buffer, TRUE_control == "control") #only ntc from sample_side
+
+# x = amount of true_samples where species is present
+# n = amount of true_samples considered
+# p = (amount of control_samples where is species is present) / (amount of control_samples considered)
+bin.data.buffer <- data.frame(x = prevalence(p.comb.buffer.true, detection = 0, count = TRUE),
+       n = nsamples(p.comb.buffer.true),
+       p = prevalence(p.comb.buffer.ntc, detection = 0, count = FALSE))
+
+vec0 <- seq(1,nrow(bin.data.buffer)) #vector to cycle thru for binom.test
+
+for (i in vec0) {
+  vec0[i] <- binom.test(x = bin.data.buffer[i,1],n = bin.data.buffer[i,2],p = bin.data.buffer[i,3],alternative = "greater")$p.value
+} #perform binom.test. fetch needed data from row in bin.data.buffer. store p.value from binom.test in vector: index in vector corresponds to row from bin.data.buffer 
+
+bin.data.buffer$p.value <- vec0 #add vec0 {containing p.values from binom.test} to bin.data.buffer as a column 
+head(bin.data.buffer) #check bin.data.buffer
+bin.data.buffer <- bin.data.buffer %>% mutate(sig_p <- if_else(p.value < 0.05, TRUE, FALSE)) #add column indicating {TRUE / FALSE} if p.value is below 5%
+colnames(bin.data.buffer)[5] <- "sign.p" #rename indicator column as sign.p
+head(bin.data.buffer)
+
+# testing binomial for taxa prevalent in pcr
+
+#p.comb.pcr contains: /n samples:: all TRUE_samples, all pcr:ntc /n taxa:: all taxa from p.comb.filt.s.prev MINUS taxa from cont.filt1
+
+p.comb.pcr.true <- subset_samples(p.comb.pcr, TRUE_control == "TRUE") #only true samples
+p.comb.pcr.ntc <- subset_samples(p.comb.pcr, TRUE_control == "control") #only ntc from sample_side
+
+# x = amount of true_samples where species is present
+# n = amount of true_samples considered
+# p = (amount of control_samples where is species is present) / (amount of control_samples considered)
+bin.data.pcr <- data.frame(x = prevalence(p.comb.pcr.true, detection = 0, count = TRUE),
+       n = nsamples(p.comb.pcr.true),
+       p = prevalence(p.comb.pcr.ntc, detection = 0, count = FALSE))
+
+vec0 <- seq(1,nrow(bin.data.pcr)) #vector to cycle thru for binom.test
+
+for (i in vec0) {
+  vec0[i] <- binom.test(x = bin.data.pcr[i,1],n = bin.data.pcr[i,2],p = bin.data.pcr[i,3],alternative = "greater")$p.value
+} #perform binom.test. fetch needed data from row in bin.data.pcr. store p.value from binom.test in vector: index in vector corresponds to row from bin.data.pcr 
+
+bin.data.pcr$p.value <- vec0 #add vec0 {containing p.values from binom.test} to bin.data.pcr as a column 
+head(bin.data.pcr) #check bin.data.pcr
+bin.data.pcr <- bin.data.pcr %>% mutate(sig_p <- if_else(p.value < 0.05, TRUE, FALSE)) #add column indicating {TRUE / FALSE} if p.value is below 5%
+colnames(bin.data.pcr)[5] <- "sign.p" #rename indicator column as sign.p
+head(bin.data.pcr)
+
+# create df containing the indicator rows of all 3 conditions
+pvaluedf <- data.frame(paraffin = bin.data.paraffin$sign.p,
+                       buffer = bin.data.buffer$sign.p,
+                       pcr = bin.data.pcr$sign.p,
+                       row.names = rownames(bin.data.paraffin)) #give dataframe the correct rownames. these are OTUs
+
+pvaluedf <- pvaluedf %>% filter(paraffin == TRUE & buffer == TRUE & pcr == TRUE) #filter those that are TRUE for all 3 rows
+# we keep the remaining OTUs {rownames(pvaluedf_true)}
+
+taxa_kept2 <- data.frame(OTU = rownames(pvaluedf),
+                           species = p.comb.filt.s@tax_table@.Data[rownames(pvaluedf),"species"])# WE KEEP TAXA IN THIS TABLE
+
+# Question: ntaxa(bin.data.paraffin) = 1290, ntaxa(p.comb.filt.s.prev) = 1380, cont.filt1 contains only 78 taxa? where is the rest??
+
+p.filt2.removed <- data.frame(paraffin = bin.data.paraffin$sign.p,
+                       buffer = bin.data.buffer$sign.p,
+                       pcr = bin.data.pcr$sign.p,
+                       row.names = rownames(bin.data.paraffin)) %>%
+  filter(!(paraffin == TRUE & buffer == TRUE & pcr == TRUE)) 
+p.filt2.removed <- p.filt2.removed %>% mutate(OTU = row.names(p.filt2.removed)) %>% mutate(species = p.comb.paraffin@tax_table@.Data[rownames(p.filt2.removed),"species"] )
+
+filtered_taxa2 <- data.frame(OTU = rownames(p.filt2.removed),
+                             species =  p.filt2.removed$species)# WE DROP TAXA IN THIS TABLE
+
+cont_table_filter2 <- data.frame( contaminant = c("TRUE","FALSE"),
+           n = c(nrow(filtered_taxa2),nrow(taxa_kept2))) # This is the total number of TAXA: those we DROP and those we KEEP
+# we start with nrow(p.comb.paraffin)
+# we end with cont_table_filter2
+
+p.comb.postf1f2 <- prune_taxa(taxa = taxa_kept2$OTU,x = p.comb.filt.s3) #we remove filter2_contaminants from p.comb.filt.s.prev3
+p.true.postf1f2 <- subset_samples(p.comb.postf1f2, TRUE_control == "TRUE")
+
+#perform PERFect filtering
+
+otu = as(otu_table(p.true.postf1f2), "matrix")
+if(taxa_are_rows(p.true.postf1f2)){otu <- t(otu)}
+otu = as_tibble(otu)
+res_sim <- PERFect_sim(X = otu)
+dim(res_sim$filtX)
+ids.sim<- colnames(res_sim$filtX)
+p.true.postf1f2.perfect <-  prune_taxa(ids.sim, p.true.postf1f2)
+```
+
+```{r microbial composition of p.true.postf1f2.perfect}
+physeq.fam <- transform_sample_counts(p.true.postf1f2.perfect, function(x){x/sum(x)})
+df.fam.melt <- psmelt(physeq.fam ) 
+
+df.fam.melt$species.v2 <- ifelse(df.fam.melt$Abundance>.1,as.character(df.fam.melt$species), "others")
+df.fam.melt$species.v2 <- factor(df.fam.melt$species.v2, levels=rev(unique(df.fam.melt$species.v2)))
+cols <- c("#9d547c","#56ca63","#a357d6","#419d2a","#525fd6","#8cbe3a","#c944aa","#5ba557","#9e66cb","#c1b735","#6d82ec","#e69728","#6654b0","#799330","#da7fdf","#3c782c","#e44586","#63c996","#dc3f53","#49cbc8","#cf3f29","#4fabda","#da6c2b","#598bd1","#b78c24","#8d4191","#a0b971","#b2386a","#479d71","#ae4341","#2ba198","#e07557","#5361a3","#dda353","#aa98df","#5b6114","#dc89bf","#327243","#e57b94","#277257","#9b62a0","#bbab59","#98495a","#526229","#d8827d","#857624","#9a4a22","#7c7d46","#e3a073","#9e6b33", "lawngreen", "orchid2", "olivedrab1", "ivory3", "darkseagreen", "bisque2", "darkgoldenrod2", "blue2", "skyblue", "seashell2", "turquoise", "tan1", "seagreen2", "palevioletred3", "linen", "steelblue4", "limegreen", "purple3", "khaki3", "snow3", "darkslategray", "magenta2", "palegreen", "salmon", "maroon", "cyan2")
+
+
+ggplot(df.fam.melt, aes(x=id, y=Abundance, fill=species.v2)) +
+  geom_bar(stat="identity") +
+  scale_y_continuous(labels = scales::percent, expand = c(0, 0), limits = c(0, 1.02)) +
+  scale_fill_manual(values = cols) +
+  xlab ("") +
+  ylab("Relative abundance") +
+  theme_bw() +
+  ggtitle("Microbial composition at species level")+
+  theme( axis.text.x = element_blank(),
+        axis.text.y = element_text (size=12),
+        axis.title = element_text(size=14, face="bold"))+
+  theme(legend.position = "bottom",
+        legend.title = element_blank(),
+        legend.background = element_rect(size=0.25, linetype="solid", colour ="black"),
+        legend.key.size = unit(4,"mm"))
+```
+
+```{r generate tree of clean phyloseq}
+#create tree
+phy_tree = rtree(ntaxa(p.true.postf1f2.perfect), rooted=TRUE, tip.label=taxa_names(p.true.postf1f2.perfect))
+p.true.postf1f2.perfect  <- merge_phyloseq(p.true.postf1f2.perfect , phy_tree)
+```
+
+We recreate the workflow laid-out in our meeting {28.11.22}. See GWDG pad for topics & conclusions from this meeting
+
+```{r}
+#we do not perform PERFect on negative controls 
+#we take PERFect filtered TRUE_samples 
+
+# load metadata table
+library(readxl)
+df <- read_excel("raw_data/Metadata.xlsx", 
+    col_types = c("numeric", "text", "text", 
+        "text", "text", "text", "text", "text", 
+        "text", "numeric", "text", "numeric", 
+        "numeric", "text", "numeric"))
+df <- as.data.frame(df)
+# Metadata.xlsx contains data for TRUE samples and controls -> we have to merge true samples and negative controls (remember we remove ntc samples later based on read-count)
+physeq.nct <- merge_phyloseq(physeq.nct1, physeq.nct2, physeq.nct3, physeq.nct4, physeq.nct5, physeq.nct6, physeq.nct7, physeq.nct8, physeq.nct9, physeq.nct10, physeq.nct11) # all negative controls
+
+physeq.filt.nct <- subset_taxa(physeq.nct, superkingdom=="Bacteria") #filter for bacterial reads
+physeq.filt.nct.s <- tax_glom(physeq.filt.nct, taxrank = "species", NArm = TRUE) #agglomerate  to species level
+
+p.comb.filt.s.new <- merge_phyloseq(p.true.filt.s.prev,physeq.filt.nct.s) #merge TRUE samples with ALL ntc sample
+p.comb.filt.s.new <- tax_glom(physeq = p.comb.filt.s.new,taxrank = "species", NArm = TRUE) #agglomerate all taxa to species level 
+
+#the following approach (next to lines) does not seem to work. Try something new.
+# sd.new <- meta(p.comb.filt.s.new) %>% left_join(df)
+# rownames(sd.new) <- sd.new$id
+# #we try
+# left_join(meta(p.comb.filt.s.new), df, by = colnames(meta(p.comb.filt.s.new))[1:10])
+#this yields sub-optimal results: issues are different column names + different data types
+
+#new idea: take sample data from p.comb.filt.s.new and expand it manually...
+# sd.new <- meta(p.comb.filt.s.new)
+# sd.new$DNAex_round <- df$DNAex_round
+# sd.new$PCR_round <- df$PCR_round
+# rownames(sd.new) <- sd.new$id
+# sample 491.paraffin_tumor has 2 entries for DNAex_round {"4_5"}
+# p.comb.filt.s.new <- merge_phyloseq(otu_table(p.comb.filt.s.new), tax_table(p.comb.filt.s.new), sample_data(sd.new))
+#as merging does not work, we can modifiy sample_data directly - even easier:
+# remember to manage ordering
+sd.new <- meta(p.comb.filt.s.new) %>% arrange(uniqueID)
+df <- df %>% arrange(uniqueID)
+sd.new$DNAex_round <- df$DNAex_round
+sd.new$PCR_round <- df$PCR_round
+rownames(sd.new) <- sd.new$id
+
+p.comb.filt.s.new <- merge_phyloseq(otu_table(p.comb.filt.s.new), tax_table(p.comb.filt.s.new), sample_data(sd.new))
+
+# sample data updated 
+sample_data(p.comb.filt.s.new)$sample_side <- ifelse(sample_data(p.comb.filt.s.new)$sample_side == "paraffin", "paraffin_tumor", sample_data(p.comb.filt.s.new)$sample_side) #modify sample side
+
+view(meta(p.comb.filt.s.new))
+
+# remember to remove negative controls based on low read-count:
+# Plan: create subset containing nct samples / calculate sample_sums / define samples to be removed / remove these samples from bigger phyloseq-obj
+
+p.comb.new.nct <- subset_samples(p.comb.filt.s.new, TRUE_control == "control")
+#Q: we take nct from our merged & agglomerated obj NOT from raw nct data - is this an issue? A: No! tax_glom only changes taxonomy not counts
+bac.count.ntc <- tibble(bac.count = sample_sums(p.comb.new.nct), 
+                        sample = sample_data(p.comb.new.nct)$id) %>% 
+  arrange (bac.count)
+
+tibble(
+  ">250 reads" = length(which(bac.count.ntc$bac.count > 250)),
+  ">500 reads" = length(which(bac.count.ntc$bac.count > 500)),
+  ">750 reads" = length(which(bac.count.ntc$bac.count > 750)),
+  ">1000 reads" = length(which(bac.count.ntc$bac.count > 1000)),
+)  %>% 
+  kable (caption="NTC read counts", booktabs =TRUE) %>%
+  kable_classic(full_width = F, html_font = "Cambria") %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive")) 
+
+id.ex <- bac.count.ntc %>% filter(bac.count < 750) %>% pull (sample)
+
+p.comb.filt.s.new <- subset_samples(p.comb.filt.s.new, !(id %in% id.ex))
+
+#Something we should consider: our cut-off for nct samples is 750. However we also have 2 true_samples with values below 750 {443.normal & 438.tumor}
+sort(sample_sums(p.true.filt.s.prev),decreasing = FALSE) # sum of counts for true samples
+sort(sample_sums(p.comb.new.nct),decreasing = FALSE) # sum of counts for nct
+# most nct samples removed because of low read counts are buffer. t
+
+#Anyway
+# Filter 1
+#perform filter1
+p.comb.new.true <- subset_samples(p.comb.filt.s.new, TRUE_control == "TRUE") # only true samples
+p.comb.new.nct <- subset_samples(p.comb.filt.s.new, TRUE_control == "control") # only negative samples
+  #plot how many taxa are present in atleast x% of negative controls
+prev_ntc = tibble(
+  prev.ntc = prevalence(p.comb.new.nct, detection  = 0, sort = TRUE, count = FALSE),
+  OTU =as.factor(names(prevalence(p.comb.new.nct , detection = 0, sort = TRUE, count = FALSE))) 
+)
+
+prev_true = tibble(
+  prev.true = prevalence(p.comb.new.true, detection  = 0, sort = TRUE, count = FALSE),
+  OTU =as.factor(names(prevalence(p.comb.new.true , detection = 0, sort = TRUE, count = FALSE))) 
+)
+
+prev <- prev_true %>% 
+  left_join(prev_ntc) %>% 
+  mutate(prev.ntc = ifelse(is.na(prev.ntc), 0, prev.ntc),
+         prev.true = ifelse(is.na(prev.true), 0, prev.true))
+
+prev_count <- prev %>%
+  count(prev.ntc) %>%
+  mutate(prop = n/nrow(prev))
+
+# p.comb.filt.s.prev.rel <- transform_sample_counts(p.comb.filt.s.prev, function(x){x/sum(x)})
+# df <- psmelt(p.comb.filt.s.prev.rel)
+# abu <- df %>% group_by(OTU) %>% 
+#   summarise(across(Abundance, mean)) 
+
+# prev_abu <- left_join(abu, prev) %>% 
+#   mutate(prev = ifelse(is.na(prev), 0, prev)) %>% 
+#   arrange (-Abundance) %>% as_tibble()
+
+
+ggplot(prev_count, aes(x= prev.ntc, y = prop))+
+  geom_point()+
+  xlab ("Relative prevalence of species in controls") +
+  ylab("Proportion bacteria") +
+  theme_bw() +
+  ggtitle("Pervalence - Abundance Distribution")+
+  theme( axis.text.x = element_text(size=12),
+        axis.text.y = element_text (size=12),
+        axis.title = element_text(size=14, face="bold"))+
+  theme(legend.position = "bottom",
+        legend.title = element_blank(),
+        legend.background = element_rect(size=0.25, linetype="solid", colour ="black"),
+        legend.key.size = unit(4,"mm"))
+
+prev_count.mod <- prev %>% # rebuild "prev_count" object 
+  count(prev.ntc) %>% # rebuild "prev_count" object 
+  mutate(prop = n/nrow(prev)) %>% # rebuild "prev_count" object 
+  arrange(-prev.ntc) %>% #orders the tibble starting with highest prev.ntc value and ending with lowest prev.ntc
+  mutate(csum = cumsum(n)) %>% #create column containing the cumulative sum of n
+  mutate(cumprop = csum/nrow(prev)) # take the cumsum and divide by the amount of taxa
+# Idea behind this:
+# In previous plots we used to plot the exact number / proportion of bacteria contained in x% of negative controls yielding nejman.figure.jpg / Graph 1 in notepad.
+# Now we plot the proportion of bacteria contained in at least x% of negative controls.
+# x = % of negative controls | y = (sum of all bacteria present in more than x negative controls + bacteria present in x negative controls) / (all bacteria)
+
+
+ggplot(prev_count.mod, aes(x= prev.ntc, y = cumprop))+
+  geom_point()+
+  xlab ("% negative controls") +
+  ylab("Proportion bacteria") +
+  theme_bw() +
+  ggtitle("% of bacteria in at least x ntc - % of negative controls included")+
+  theme( axis.text.x = element_text(size=12),
+        axis.text.y = element_text (size=12),
+        axis.title = element_text(size=14, face="bold"))+
+  theme(legend.position = "bottom",
+        legend.title = element_blank(),
+        legend.background = element_rect(size=0.25, linetype="solid", colour ="black"),
+        legend.key.size = unit(4,"mm"))
+
+filter <- 0.5 #CP setting threshold to 50%
+filtered_taxa1 <- tibble(
+  Cont = genefilter_sample(p.comb.new.nct, filterfun_sample(function(x) x > 0), A=filter*nsamples(p.comb.new.nct)),
+  OTU = names(genefilter_sample(p.comb.new.nct, filterfun_sample(function(x) x > 0), A=filter*nsamples(p.comb.new.nct)))
+) # this keeps ordering of taxa in line with taxonomyTable
+head(!(filtered_taxa1$Cont))
+
+p.comb.filt.s.new <- subset_taxa(p.comb.filt.s.new, !(filtered_taxa1$Cont))
+# filter2??
+#normal binom.test setup as done before
+p.comb.pcr <- subset_samples(p.comb.filt.s.new, sample_side == "PCR_ctrl_H2O" | TRUE_control == "TRUE")
+p.comb.buffer <- subset_samples(p.comb.filt.s.new, sample_side == "buffer" | TRUE_control == "TRUE")
+p.comb.paraffin <- subset_samples(p.comb.filt.s.new, sample_side == "paraffin_tumor" |  sample_side == "paraffin_normal" | TRUE_control == "TRUE")
+
+# start testing via binomial for taxa prevalence
+# CP starts here
+# testing binomial for taxa prevalent in paraffin
+
+#p.comb.paraffin contains: /n samples:: all TRUE_samples, all paraffin_ntc /n taxa:: all taxa from p.comb.filt.s.prev MINUS taxa from cont.filt1
+
+p.comb.paraffin.true <- subset_samples(p.comb.paraffin, TRUE_control == "TRUE") #only true samples
+p.comb.paraffin.ntc <- subset_samples(p.comb.paraffin, TRUE_control == "control") #only ntc from sample_side
+
+# x = amount of true_samples where species is present
+# n = amount of true_samples considered
+# p = (amount of control_samples where is species is present) / (amount of control_samples considered)
+bin.data.paraffin <- data.frame(x = prevalence(p.comb.paraffin.true, detection = 0, count = TRUE),
+       n = nsamples(p.comb.paraffin.true),
+       p = prevalence(p.comb.paraffin.ntc, detection = 0, count = FALSE))
+
+vec0 <- seq(1,nrow(bin.data.paraffin)) #vector to cycle thru for binom.test
+
+for (i in vec0) {
+  vec0[i] <- binom.test(x = bin.data.paraffin[i,1],n = bin.data.paraffin[i,2],p = bin.data.paraffin[i,3],alternative = "greater")$p.value
+} #perform binom.test. fetch needed data from row in bin.data.paraffin. store p.value from binom.test in vector: index in vector corresponds to row from bin.data.paraffin 
+
+bin.data.paraffin$p.value <- vec0 #add vec0 {containing p.values from binom.test} to bin.data.paraffin as a column 
+head(bin.data.paraffin) #check bin.data.paraffin
+bin.data.paraffin <- bin.data.paraffin %>% mutate(sig_p <- if_else(p.value < 0.05, TRUE, FALSE)) #add column indicating {TRUE / FALSE} if p.value is below 5%
+colnames(bin.data.paraffin)[5] <- "sign.p" #rename indicator column as sign.p
+
+# testing binomial for taxa prevalent in buffer
+
+#p.comb.buffer contains: /n samples:: all TRUE_samples, all buffer:ntc /n taxa:: all taxa from p.comb.filt.s.prev MINUS taxa from cont.filt1
+
+p.comb.buffer.true <- subset_samples(p.comb.buffer, TRUE_control == "TRUE") #only true samples
+p.comb.buffer.ntc <- subset_samples(p.comb.buffer, TRUE_control == "control") #only ntc from sample_side
+
+# x = amount of true_samples where species is present
+# n = amount of true_samples considered
+# p = (amount of control_samples where is species is present) / (amount of control_samples considered)
+bin.data.buffer <- data.frame(x = prevalence(p.comb.buffer.true, detection = 0, count = TRUE),
+       n = nsamples(p.comb.buffer.true),
+       p = prevalence(p.comb.buffer.ntc, detection = 0, count = FALSE))
+
+vec0 <- seq(1,nrow(bin.data.buffer)) #vector to cycle thru for binom.test
+
+for (i in vec0) {
+  vec0[i] <- binom.test(x = bin.data.buffer[i,1],n = bin.data.buffer[i,2],p = bin.data.buffer[i,3],alternative = "greater")$p.value
+} #perform binom.test. fetch needed data from row in bin.data.buffer. store p.value from binom.test in vector: index in vector corresponds to row from bin.data.buffer 
+
+bin.data.buffer$p.value <- vec0 #add vec0 {containing p.values from binom.test} to bin.data.buffer as a column 
+head(bin.data.buffer) #check bin.data.buffer
+bin.data.buffer <- bin.data.buffer %>% mutate(sig_p <- if_else(p.value < 0.05, TRUE, FALSE)) #add column indicating {TRUE / FALSE} if p.value is below 5%
+colnames(bin.data.buffer)[5] <- "sign.p" #rename indicator column as sign.p
+head(bin.data.buffer)
+
+# testing binomial for taxa prevalent in pcr
+
+#p.comb.pcr contains: /n samples:: all TRUE_samples, all pcr:ntc /n taxa:: all taxa from p.comb.filt.s.prev MINUS taxa from cont.filt1
+
+p.comb.pcr.true <- subset_samples(p.comb.pcr, TRUE_control == "TRUE") #only true samples
+p.comb.pcr.ntc <- subset_samples(p.comb.pcr, TRUE_control == "control") #only ntc from sample_side
+
+# x = amount of true_samples where species is present
+# n = amount of true_samples considered
+# p = (amount of control_samples where is species is present) / (amount of control_samples considered)
+bin.data.pcr <- data.frame(x = prevalence(p.comb.pcr.true, detection = 0, count = TRUE),
+       n = nsamples(p.comb.pcr.true),
+       p = prevalence(p.comb.pcr.ntc, detection = 0, count = FALSE))
+
+vec0 <- seq(1,nrow(bin.data.pcr)) #vector to cycle thru for binom.test
+
+for (i in vec0) {
+  vec0[i] <- binom.test(x = bin.data.pcr[i,1],n = bin.data.pcr[i,2],p = bin.data.pcr[i,3],alternative = "greater")$p.value
+} #perform binom.test. fetch needed data from row in bin.data.pcr. store p.value from binom.test in vector: index in vector corresponds to row from bin.data.pcr 
+
+bin.data.pcr$p.value <- vec0 #add vec0 {containing p.values from binom.test} to bin.data.pcr as a column 
+head(bin.data.pcr) #check bin.data.pcr
+bin.data.pcr <- bin.data.pcr %>% mutate(sig_p <- if_else(p.value < 0.05, TRUE, FALSE)) #add column indicating {TRUE / FALSE} if p.value is below 5%
+colnames(bin.data.pcr)[5] <- "sign.p" #rename indicator column as sign.p
+head(bin.data.pcr)
+
+
+#idea: only the last 10 samples are an issue {326 - 335} we use the controls with same DNAex_round & PCR_round attributes
+
+p.comb.6_8 <- subset_samples(p.comb.filt.s.new, DNAex_round == "6")
+
+#create subsets for binom.test
+p.comb.6_8.true <- subset_samples(p.comb.6_8, TRUE_control == "TRUE") #only true samples
+p.comb.6_8.nct <- subset_samples(p.comb.6_8, TRUE_control == "control")
+p.comb.6_8.ntc.buffer <- subset_samples(p.comb.6_8.nct, sample_side == "buffer") #only buffer nct 
+p.comb.6_8.ntc.paraffin <- subset_samples(p.comb.6_8.nct, sample_side == "paraffin_tumor") # only paraffin nct
+
+#perform binom.test for true_paraffin
+# x = amount of true_samples where species is present
+# n = amount of true_samples considered
+# p = (amount of control_samples where is species is present) / (amount of control_samples considered)
+bin.data.true_paraffin68 <- data.frame(x = prevalence(p.comb.6_8.true, detection = 0, count = TRUE),
+       n = nsamples(p.comb.6_8.true),
+       p = prevalence(p.comb.6_8.ntc.paraffin, detection = 0, count = FALSE))
+
+vec0 <- seq(1,nrow(bin.data.true_paraffin68)) #vector to cycle thru for binom.test
+
+for (i in vec0) {
+  vec0[i] <- binom.test(x = bin.data.true_paraffin68[i,1],n = bin.data.true_paraffin68[i,2],p = bin.data.true_paraffin68[i,3],alternative = "greater")$p.value
+} #perform binom.test. fetch needed data from row in bin.data.true_paraffin68. store p.value from binom.test in vector: index in vector corresponds to row from bin.data.true_paraffin68 
+
+bin.data.true_paraffin68$p.value <- vec0 #add vec0 {containing p.values from binom.test} to bin.data.true_paraffin68 as a column 
+head(bin.data.true_paraffin68) #check bin.data.true_paraffin68
+bin.data.true_paraffin68 <- bin.data.true_paraffin68 %>% mutate(sig_p <- if_else(p.value < 0.05, TRUE, FALSE)) #add column indicating {TRUE / FALSE} if p.value is below 5%
+colnames(bin.data.true_paraffin68)[5] <- "sign.p" #rename indicator column as sign.p
+
+
+
+#perform binom.test for true_buffer
+# x = amount of true_samples where species is present
+# n = amount of true_samples considered
+# p = (amount of control_samples where is species is present) / (amount of control_samples considered)
+bin.data.true_buffer68 <- data.frame(x = prevalence(p.comb.6_8.true, detection = 0, count = TRUE),
+       n = nsamples(p.comb.6_8.true),
+       p = prevalence(p.comb.6_8.ntc.buffer, detection = 0, count = FALSE))
+
+vec0 <- seq(1,nrow(bin.data.true_buffer68)) #vector to cycle thru for binom.test
+
+for (i in vec0) {
+  vec0[i] <- binom.test(x = bin.data.true_buffer68[i,1],n = bin.data.true_buffer68[i,2],p = bin.data.true_buffer68[i,3],alternative = "greater")$p.value
+} #perform binom.test. fetch needed data from row in bin.data.true_buffer68. store p.value from binom.test in vector: index in vector corresponds to row from bin.data.true_buffer68 
+
+bin.data.true_buffer68$p.value <- vec0 #add vec0 {containing p.values from binom.test} to bin.data.true_buffer68 as a column 
+head(bin.data.true_buffer68) #check bin.data.true_buffer68
+bin.data.true_buffer68 <- bin.data.true_buffer68 %>% mutate(sig_p <- if_else(p.value < 0.05, TRUE, FALSE)) #add column indicating {TRUE / FALSE} if p.value is below 5%
+colnames(bin.data.true_buffer68)[5] <- "sign.p" #rename indicator column as sign.p
+
+pvaluedf <- data.frame(paraffin = bin.data.paraffin$sign.p,
+                       buffer = bin.data.buffer$sign.p,
+                       pcr = bin.data.pcr$sign.p,
+                       true_buffer68 = bin.data.true_buffer68$sign.p,
+                       true_paraffin68 = bin.data.true_paraffin68$sign.p,
+                       row.names = rownames(bin.data.paraffin))
+pvaluedf <- pvaluedf %>% filter(paraffin == TRUE & buffer == TRUE & pcr == TRUE & true_buffer68 == TRUE & true_paraffin68 == TRUE)
+
+improvise.p <- subset_samples(p.comb.filt.s.new, TRUE_control == "TRUE")
+improvise.p <- prune_taxa(taxa = row.names(pvaluedf),x = improvise.p)
+
+plot(y = sample_sums(improvise.p),x = seq(1,nsamples(improvise.p)), xlab = "Sample index", ylab= "Seq-depth", main= "true samples post PERFect/Nejman")
+
+sample_sums(improvise.p)
+
+physeq.fam <- transform_sample_counts(improvise.p, function(x){x/sum(x)})
+df.fam.melt <- psmelt(physeq.fam ) 
+
+df.fam.melt$species.v2 <- ifelse(df.fam.melt$Abundance>.1,as.character(df.fam.melt$species), "others")
+df.fam.melt$species.v2 <- factor(df.fam.melt$species.v2, levels=rev(unique(df.fam.melt$species.v2)))
+cols <- c("#9d547c","#56ca63","#a357d6","#419d2a","#525fd6","#8cbe3a","#c944aa","#5ba557","#9e66cb","#c1b735","#6d82ec","#e69728","#6654b0","#799330","#da7fdf","#3c782c","#e44586","#63c996","#dc3f53","#49cbc8","#cf3f29","#4fabda","#da6c2b","#598bd1","#b78c24","#8d4191","#a0b971","#b2386a","#479d71","#ae4341","#2ba198","#e07557","#5361a3","#dda353","#aa98df","#5b6114","#dc89bf","#327243","#e57b94","#277257","#9b62a0","#bbab59","#98495a","#526229","#d8827d","#857624","#9a4a22","#7c7d46","#e3a073","#9e6b33", "lawngreen", "orchid2", "olivedrab1", "ivory3", "darkseagreen", "bisque2", "darkgoldenrod2", "blue2", "skyblue", "seashell2", "turquoise", "tan1", "seagreen2", "palevioletred3", "linen", "steelblue4", "limegreen", "purple3", "khaki3", "snow3", "darkslategray", "magenta2", "palegreen", "salmon", "maroon", "cyan2")
+
+
+ggplot(df.fam.melt, aes(x=id, y=Abundance, fill=species.v2)) +
+  geom_bar(stat="identity") +
+  scale_y_continuous(labels = scales::percent, expand = c(0, 0), limits = c(0, 1.02)) +
+  scale_fill_manual(values = cols) +
+  xlab ("") +
+  ylab("Relative abundance") +
+  theme_bw() +
+  ggtitle("Microbial composition at species level")+
+  theme( axis.text.x = element_blank(),
+        axis.text.y = element_text (size=12),
+        axis.title = element_text(size=14, face="bold"))+
+  theme(legend.position = "bottom",
+        legend.title = element_blank(),
+        legend.background = element_rect(size=0.25, linetype="solid", colour ="black"),
+        legend.key.size = unit(4,"mm"))
+
+#post meeting (06.12)
+
+#filter1: buffer & DNAex_round
+#a <- unique(meta(p.comb.filt.s.new)$DNAex_round) small prob: this contains "NA" & "4_5"
+# a <- c("1","2","3","4","5","6","7") #just {07.12.22 realised: a == seq(1,length(a))}
+# df.p1 <- data.frame(matrix(data = 0,nrow = ntaxa(p.comb.filt.s.new),ncol = length(a)))
+# for (i in seq(1,length(a))) {
+#   b <- subset_samples(p.comb.filt.s.new,DNAex_round == a[i])
+#   b.buffer <- subset_samples(b, sample_side == "buffer")
+#   b.true <- subset_samples(b, TRUE_control == "TRUE")
+#   df.filt <- data.frame(x = prevalence(b.true, detection = 0, count = TRUE),
+#                         n = nsamples(b.true),
+#                         p = prevalence(b.buffer, detection = 0, count = FALSE))
+#   vec <- seq(1,nrow(df.p1))
+#   for (j in vec) {
+#     vec[j] <- binom.test(x = df.filt[j,"x"], n = df.filt[j,"n"], p = df.filt[j,"p"],alternative = "greater")$p.value
+#   }
+#   df.p1[,i] <- vec
+# }
+# # 
+
+bad_taxa <- list()
+if( !require(rlist) ){
+  install.packages(rlist)
+}
+library(rlist)
+IDs <- unique(meta(p.comb.filt.s.new)$DNAex_round)
+df.condition1.meta <- as.data.frame(matrix(0,nrow = 4,ncol = length(IDs)),row.names = c("n_true_samples","n_nct_samples","n_condition_nct_samples","batch_name"))
+vec0 <- rep(0,length(IDs))
+for (i in seq(1,length(IDs))) {
+  vec0[i] <- paste0("c1","b",i)
+}
+colnames(df.condition1.meta) <- vec0
+for (i in seq(1,length(IDs))) {
+  b <- subset_samples(p.comb.filt.s.new, DNAex_round == IDs[i])
+  b <- prune_taxa(taxa = (taxa_names(b)[-which(taxa_sums(b) == 0)]),x = b) #this removes taxa with taxa_sums == 0
+  check1 <- length(which(meta(b)$TRUE_control == "TRUE")) #checks whether the batch contains true_samples
+  check2 <- length(which(meta(b)$TRUE_control == "control")) #checks whether the batch contains nct_sample
+  check3 <- length(which(meta(b)$sample_side == "buffer")) #checks whether the batch contains condition_nct_samples
+  df.condition1.meta[1,i] <- check1
+  df.condition1.meta[2,i] <- check2
+  df.condition1.meta[3,i] <- check3
+  df.condition1.meta[4,i] <- IDs[i]
+  if (check1 == 0) {
+    print(paste0("check1 :",IDs[i]))
+    next}
+  if (check2 == 0) {
+    print(paste0("check2 :",IDs[i]))
+    next}
+  if (check3 == 0) {
+    print(paste0("check3 :",IDs[i]))
+    next}
+  b.true <- subset_samples(b,TRUE_control == "TRUE") # defines subset consisting of true samples from the batch
+  b.condition <- subset_samples(b,sample_side == "buffer") # defines subset consisting of nct samples from the batch
+  b <- merge_phyloseq(b.true,b.condition) # we take the subsets we want, merge them to allow for thorough removal of bacteria
+  if (length(which(taxa_sums(b) == 0)) != 0) {
+    b <- prune_taxa(taxa = (taxa_names(b)[-which(taxa_sums(b) == 0)]),x = b) #this removes taxa with taxa_sums == 0
+  }
+  b.true <- subset_samples(b,TRUE_control == "TRUE") 
+  b.condition <- subset_samples(b,sample_side == "buffer") # Im honest: this is a bit redundant
+  df.filt <- data.frame(x = prevalence(b.true, detection = 0, count = TRUE),
+                        n = nsamples(b.true),
+                        p = prevalence(b.condition, detection = 0, count = FALSE))
+  vec <- seq(1,nrow(df.filt))
+  for (j in vec) {
+    vec[j] <- binom.test(x = df.filt[j,"x"], n = df.filt[j,"n"], p = df.filt[j,"p"],alternative = "greater")$p.value
+  }
+  y <- paste0("df.filt1-",i)
+  assign(y,df.filt)
+  df.p1 <- data.frame(id = rownames(df.filt),
+                     pvalue = vec)
+  x <- paste0("df.p1-",i)
+  assign(x,df.p1)
+}
+bad_taxa <- list.append(bad_taxa,`df.p1-1`[which(x = `df.p1-1`$pvalue >= 0.05),1])
+bad_taxa <- list.append(bad_taxa,`df.p1-2`[which(x = `df.p1-2`$pvalue >= 0.05),1])
+bad_taxa <- list.append(bad_taxa,`df.p1-3`[which(x = `df.p1-3`$pvalue >= 0.05),1])
+bad_taxa <- list.append(bad_taxa,`df.p1-4`[which(x = `df.p1-4`$pvalue >= 0.05),1])
+bad_taxa <- list.append(bad_taxa,`df.p1-5`[which(x = `df.p1-5`$pvalue >= 0.05),1])
+bad_taxa <- list.append(bad_taxa,`df.p1-6`[which(x = `df.p1-6`$pvalue >= 0.05),1])
+
+
+
+#small feedback: DNAex_round 7 does NOT have buffer nct_samples 
+#with no buffer for DNAex_round 7, by default all taxa in batch 7 have p.values = 0 {are significant by default}
+
+#filter2: PCR_ctrl_H2O & PCR_round
+#a <- unique(meta(p.comb.filt.s.new)$PCR_round) # PCR_round 1, 8 & 9 have no nct comparison
+# a <- as.numeric(c(meta(subset_samples(p.comb.filt.s.new, sample_side == "PCR_ctrl_H2O"))$sample_nr,"1","8","9"))
+# df.p2 <- data.frame(matrix(data = 0,nrow = ntaxa(p.comb.filt.s.new),ncol = length(a)))
+# for (i in a) {
+#   b <- subset_samples(p.comb.filt.s.new,PCR_round == i)
+#   b.pcr <- subset_samples(b, sample_side == "PCR_ctrl_H2O")
+#   b.true <- subset_samples(b, TRUE_control == "TRUE")
+#   df.filt <- data.frame(x = prevalence(b.true, detection = 0, count = TRUE),
+#                         n = nsamples(b.true),
+#                         p = prevalence(b.pcr, detection = 0, count = FALSE))
+#   vec <- seq(1,nrow(df.p2))
+#   for (j in vec) {
+#     vec[j] <- binom.test(x = df.filt[j,"x"], n = df.filt[j,"n"], p = df.filt[j,"p"],alternative = "greater")$p.value
+#   }
+#   df.p2[,i] <- vec
+# } # does not work! True samples only in PCR_round 1,2,8 - we have nct samples for PCR_round 2,3,4,5,6,7 {nct for round 1 filtered out}
+# new approach: we need to use more samples and see whether something works {re-write code to include nct 532 and then perform loop for 1,2 - 8 has NO nct samples sequenced alongside it}
+
+IDs <- unique(meta(p.comb.filt.s.new)$PCR_round)
+df.condition2.meta <- as.data.frame(matrix(0,nrow = 4,ncol = length(IDs)),row.names = c("n_true_samples","n_nct_samples","n_condition_nct_samples","batch_name"))
+vec0 <- rep(0,length(IDs))
+for (i in seq(1,length(IDs))) {
+  vec0[i] <- paste0("c2","b",i)
+}
+colnames(df.condition2.meta) <- vec0
+for (i in seq(1,length(IDs))) {
+  b <- subset_samples(p.comb.filt.s.new, PCR_round == IDs[i])
+  b <- prune_taxa(taxa = (taxa_names(b)[-which(taxa_sums(b) == 0)]),x = b) #this removes taxa with taxa_sums == 0
+  check1 <- length(which(meta(b)$TRUE_control == "TRUE")) #checks whether the batch contains true_samples
+  check2 <- length(which(meta(b)$TRUE_control == "control")) #checks whether the batch contains nct_sample
+  check3 <- length(which(meta(b)$sample_side == "PCR_ctrl_H2O")) #checks whether the batch contains condition_nct_samples
+  df.condition2.meta[1,i] <- check1
+  df.condition2.meta[2,i] <- check2
+  df.condition2.meta[3,i] <- check3
+  df.condition2.meta[4,i] <- IDs[i]
+  if (check1 == 0) {
+    print(paste0("check1 :",IDs[i]))
+    next}
+  if (check2 == 0) {
+    print(paste0("check2 :",IDs[i]))
+    next}
+  if (check3 == 0) {
+    print(paste0("check3 :",IDs[i]))
+    next}
+  b.true <- subset_samples(b,TRUE_control == "TRUE") # defines subset consisting of true samples from the batch
+  b.condition <- subset_samples(b,sample_side == "PCR_ctrl_H2O") # defines subset consisting of nct samples from the batch
+  b <- merge_phyloseq(b.true,b.condition) # we take the subsets we want, merge them to allow for thorough removal of bacteria
+  if (length(which(taxa_sums(b) == 0)) != 0) {
+    b <- prune_taxa(taxa = (taxa_names(b)[-which(taxa_sums(b) == 0)]),x = b) #this removes taxa with taxa_sums == 0
+  }
+  b.true <- subset_samples(b,TRUE_control == "TRUE") 
+  b.condition <- subset_samples(b,sample_side == "PCR_ctrl_H2O") # Im honest: this is a bit redundant
+  df.filt <- data.frame(x = prevalence(b.true, detection = 0, count = TRUE),
+                        n = nsamples(b.true),
+                        p = prevalence(b.condition, detection = 0, count = FALSE))
+  vec <- seq(1,nrow(df.filt))
+  for (j in vec) {
+    vec[j] <- binom.test(x = df.filt[j,"x"], n = df.filt[j,"n"], p = df.filt[j,"p"],alternative = "greater")$p.value
+  }
+  y <- paste0("df.filt2-",i)
+  assign(y,df.filt)
+  df.p2 <- data.frame(id = rownames(df.filt),
+                     pvalue = vec)
+  x <- paste0("df.p2-",i)
+  assign(x,df.p2)
+}
+
+bad_taxa <- list.append(bad_taxa,`df.p2-1`[which(x = `df.p2-1`$pvalue >= 0.05),1])
+bad_taxa <- list.append(bad_taxa,`df.p2-2`[which(x = `df.p2-2`$pvalue >= 0.05),1])
+
+
+#filter3: paraffin & all samples
+#idea: compare true normal samples with paraffin_normal | true tumor samples with paraffin_tumor VS. true samples with paraffin samples
+df.condition3.meta <- as.data.frame(matrix(0,nrow = 4,ncol = 1),row.names = c("n_true_samples","n_nct_samples","n_condition_nct_samples","batch_name"))
+
+p.comb.paraffin <- subset_samples(p.comb.filt.s.new, sample_side == "paraffin_tumor" |  sample_side == "paraffin_normal" | TRUE_control == "TRUE") # true samples & paraffin nct samples
+if (length(which(taxa_sums(p.comb.paraffin) == 0)) != 0) {
+    p.comb.paraffin <- prune_taxa(taxa = (taxa_names(p.comb.paraffin)[-which(taxa_sums(p.comb.paraffin) == 0)]),x = p.comb.paraffin) #this removes taxa with taxa_sums == 0
+}
+df.condition3.meta[2,1] <- nsamples(subset_samples(p.comb.filt.s.new,TRUE_control == "control"))
+p.comb.paraffin.true <- subset_samples(p.comb.paraffin, TRUE_control == "TRUE") #only true samples
+df.condition3.meta[1,1] <- nsamples(p.comb.paraffin.true)
+p.comb.paraffin.ntc <- subset_samples(p.comb.paraffin, TRUE_control == "control") #only ntc from sample_side
+df.condition3.meta[3,1] <- nsamples(p.comb.paraffin.ntc)
+bin.data.paraffin <- data.frame(x = prevalence(p.comb.paraffin.true, detection = 0, count = TRUE),
+       n = nsamples(p.comb.paraffin.true),
+       p = prevalence(p.comb.paraffin.ntc, detection = 0, count = FALSE))
+
+vec <- seq(1,nrow(bin.data.paraffin)) #vector to cycle thru for binom.test
+for (i in vec) {
+  vec[i] <- binom.test(x = bin.data.paraffin[i,"x"],n = bin.data.paraffin[i,"n"],p = bin.data.paraffin[i,"p"],alternative = "greater")$p.value
+} #perform binom.test. fetch needed data from row in bin.data.paraffin. store p.value from binom.test in vector: index in vector corresponds to row from bin.data.paraffin 
+
+df.p3 <- data.frame(id = rownames(bin.data.paraffin),
+                     pvalue = vec)
+bad_taxa <- list.append(bad_taxa,df.p3[which(x = df.p3$pvalue >= 0.05),1])
+
+a <- union(bad_taxa[[1]],bad_taxa[[2]])
+b <- union(bad_taxa[[3]],bad_taxa[[4]])
+c <- union(bad_taxa[[5]],bad_taxa[[6]])
+d <- union(bad_taxa[[7]],bad_taxa[[8]])
+e <- union(a,bad_taxa[[9]])
+
+a <- union(e,b)
+c <- union(c,d)
+bad_taxa <- union(a,c)
+
+#issues of check: most batches dont contain true samples, some contain no negative control at all, some contain no desired negative control -> general issue.
+
+df.condition.meta <- cbind(df.condition1.meta,df.condition2.meta,df.condition3.meta)
+
+p.newfilter <- subset_taxa(p.comb.filt.s.new, !(taxa_names(p.comb.filt.s.new) %in% bad_taxa))
+p.newfilter <- subset_samples(p.newfilter,TRUE_control == "TRUE")
+
+
+#debugging {13.12.2022}
+IDs <- unique(meta(p.comb.filt.s.new)$DNAex_round)
+length(IDs)
+b <- subset_samples(p.comb.filt.s.new, DNAex_round == IDs[1])
+b <- prune_taxa(taxa = (taxa_names(b)[-which(taxa_sums(b) == 0)]),x = b)
+  check1 <- length(which(meta(b)$TRUE_control == "TRUE"))
+  if (check1 == 0) {
+    print(paste0("check1 :",IDs[i]))
+    next}
+  check2 <- length(which(meta(b)$TRUE_control == "control"))
+  if (check2 == 0) {
+    print(paste0("check2 :",IDs[i]))
+    next}
+  check3 <- length(which(meta(b)$sample_side == "buffer"))
+  if (check3 == 0) {
+    print(paste0("check3 :",IDs[i]))
+    next}
+  b.true <- subset_samples(b,TRUE_control == "TRUE")
+  b.condition <- subset_samples(b,sample_side == "buffer")
+  b <- merge_phyloseq(b.true,b.condition)
+  b <- prune_taxa(taxa = (taxa_names(b)[-which(taxa_sums(b) == 0)]),x = b)
+  b.true <- subset_samples(b,TRUE_control == "TRUE")
+  b.condition <- subset_samples(b,sample_side == "buffer") #this is a bit redundant. 
+  df.filt <- data.frame(x = prevalence(b.true, detection = 0, count = TRUE),
+                        n = nsamples(b.true),
+                        p = prevalence(b.condition, detection = 0, count = FALSE))
+vec <- seq(1,nrow(df.filt)) #vector to cycle thru for binom.test
+for (i in vec) {
+  vec[i] <- binom.test(x = df.filt[i,"x"],n = df.filt[i,"n"],p = df.filt[i,"p"],alternative = "greater")$p.value
+}
+df.p1 <- data.frame(id = rownames(df.filt),
+                     pvalue = vec)
+
+for (i in 1) {
+  x <- paste0("df.p1",i)
+  assign(x,df.p1)
+}
+
+# we remove taxa that have x = n = 0. These taxa are not present in the subset and therefore it is not sensible to perform any kind of statistical test on them.
+
+#modification {15.12.2022}
+#oral explanation: "all elemtens of a batch suffer from batch-specific contamination. Utilise all information for decontaminating" {why are we splitting our negative controls?} 
+bad_taxa <- list()
+if( !require(rlist) ){
+  install.packages(rlist)
+}
+library(rlist)
+IDs <- unique(meta(p.comb.filt.s.new)$DNAex_round)
+df.condition1.meta <- as.data.frame(matrix(0,nrow = 8,ncol = length(IDs)),row.names = c("n_true_samples","n_nct_samples","n_paraffin_tumor_nct_samples","n_paraffin_normal_nct_samples","n_paraffin_nct_samples","n_buffer_nct_samples","n_pcr_nct_samples","batch_name"))
+vec0 <- rep(0,length(IDs))
+for (i in seq(1,length(IDs))) {
+  vec0[i] <- paste0("DNAex","b",i)
+}
+colnames(df.condition1.meta) <- vec0
+for (i in seq(1,length(IDs))) {
+  b <- subset_samples(p.comb.filt.s.new, DNAex_round == IDs[i])
+  b <- prune_taxa(taxa = (taxa_names(b)[-which(taxa_sums(b) == 0)]),x = b) #this removes taxa with taxa_sums == 0 from the overall batch
+  check1 <- length(which(meta(b)$TRUE_control == "TRUE")) #checks whether the batch contains true_samples
+  check2 <- length(which(meta(b)$TRUE_control == "control")) #checks whether the batch contains nct_sample
+  check3 <- length(which(meta(b)$sample_side == "buffer")) #checks whether the batch contains buffer_nct_samples
+  check4 <- length(which(meta(b)$sample_side == "PCR_ctrl_H2O")) #checks whether the batch contains pcrH2O_nct_samples
+  check5 <- length(which(meta(b)$sample_side == "paraffin_normal")) #checks whether the batch contains paraffinnormal_nct_samples
+  check6 <- length(which(meta(b)$sample_side == "paraffin_tumor")) #checks whether the batch contains paraffintumor_nct_samples
+  df.condition1.meta[1,i] <- check1
+  df.condition1.meta[2,i] <- check2
+  df.condition1.meta[3,i] <- check6
+  df.condition1.meta[4,i] <- check5
+  df.condition1.meta[5,i] <- (check5+check6)
+  df.condition1.meta[6,i] <- check3
+  df.condition1.meta[7,i] <- check4
+  df.condition1.meta[8,i] <- IDs[i]
+  if (check1 == 0) {
+    print(paste0("check1 :",IDs[i]))
+    next}
+  if (check2 == 0) {
+    print(paste0("check2 :",IDs[i]))
+    next}
+  if (check3 != 0) {
+    #perform test
+    b.true <- subset_samples(b,TRUE_control == "TRUE") #subset of true samples in batch
+    b.condition <- subset_samples(b,sample_side == "buffer") #subset of batch_nct_samples in batch
+    b.sub <- merge_phyloseq(b.true,b.condition) # we take the subsets we want, merge them to allow for thorough removal of bacteria
+    if (length(which(taxa_sums(b.sub) == 0)) != 0) {
+    b.sub <- prune_taxa(taxa = (taxa_names(b.sub)[-which(taxa_sums(b.sub) == 0)]),x = b.sub) #this removes taxa with taxa_sums == 0 from our batch subset
+    }
+    b.true <- subset_samples(b.sub,TRUE_control == "TRUE") #create new subset of true samples in batch
+    b.condition <- subset_samples(b.sub,sample_side == "buffer") #create new subset of batch_nct_samples in batch  
+    # Im honest: this is a bit redundant
+    df.filt <- data.frame(x = prevalence(b.true, detection = 0, count = TRUE),
+                        n = nsamples(b.true),
+                        p = prevalence(b.condition, detection = 0, count = FALSE)) #df stores x,n,p for binom.test
+    vec <- seq(1,nrow(df.filt))
+    for (j in vec) {
+    vec[j] <- binom.test(x = df.filt[j,"x"], n = df.filt[j,"n"], p = df.filt[j,"p"],alternative = "greater")$p.value
+    }
+    y <- paste0("df.filt1-buffer-",IDs[i])
+    assign(y,df.filt)
+    df.p1 <- data.frame(id = rownames(df.filt),
+                       pvalue = vec)
+    x <- paste0("df.p1-buffer-",IDs[i])
+    assign(x,df.p1)
+  }
+  if (check4 != 0) {
+    #perform test
+    b.true <- subset_samples(b,TRUE_control == "TRUE") #subset of true samples in batch
+    b.condition <- subset_samples(b,sample_side == "PCR_ctrl_H2O") #subset of batch_nct_samples in batch
+    b.sub <- merge_phyloseq(b.true,b.condition) # we take the subsets we want, merge them to allow for thorough removal of bacteria
+    if (length(which(taxa_sums(b.sub) == 0)) != 0) {
+    b.sub <- prune_taxa(taxa = (taxa_names(b.sub)[-which(taxa_sums(b.sub) == 0)]),x = b.sub) #this removes taxa with taxa_sums == 0 from our batch subset
+    }
+    b.true <- subset_samples(b.sub,TRUE_control == "TRUE") #create new subset of true samples in batch
+    b.condition <- subset_samples(b.sub,sample_side == "PCR_ctrl_H2O") #create new subset of batch_nct_samples in batch  
+    # Im honest: this is a bit redundant
+    df.filt <- data.frame(x = prevalence(b.true, detection = 0, count = TRUE),
+                        n = nsamples(b.true),
+                        p = prevalence(b.condition, detection = 0, count = FALSE)) #df stores x,n,p for binom.test
+    vec <- seq(1,nrow(df.filt))
+    for (j in vec) {
+    vec[j] <- binom.test(x = df.filt[j,"x"], n = df.filt[j,"n"], p = df.filt[j,"p"],alternative = "greater")$p.value
+    }
+    y <- paste0("df.filt1-PCR_ctrl_H2O-",IDs[i])
+    assign(y,df.filt)
+    df.p1 <- data.frame(id = rownames(df.filt),
+                       pvalue = vec)
+    x <- paste0("df.p1-PCR_ctrl_H2O-",IDs[i])
+    assign(x,df.p1)
+    }
+}
+```
+
+```{r visulize sample size according to batch}
+sample_data(p.comb.filt.s.new)$sample_sum <- sample_sums(p.comb.filt.s.new)
+sample_data(p.comb.filt.s.new)$index <- seq(1,nsamples(p.comb.filt.s.new))
+df.melt <- psmelt(subset_samples(p.comb.filt.s.new, TRUE_control == "TRUE"))
+ggplot(data=df.melt, aes(x=index, y=sample_sum, color=DNAex_round)) + geom_point()  + theme_bw() + ggtitle("Library size")
+
+ggplot(data=df.melt, aes(x=index, y=sample_sum, color=PCR_round)) + geom_point()  + theme_bw() + ggtitle("Library size")
+```
+
+Analysis without normalization:
+First we need to subset our samples such that "TRUE_control" = TRUE only!
+```{r alpha diversity}
+#Hill-coef, inverse Simpson & Shannon div
+#div↑ ~ richness↑ , evenness↑
+#Richness, Phylogenetic Diversity, Evenness, Dominance, Rarity
+#Faith?
+a_index1 <- estimate_richness(physeq = otu_table(p.true.prev.postf1f2), measures = c("Observed","Shannon","Simpson","InvSimpson", "Chao1","ACE","Fisher"))
+a_index1$sample_side <- meta(p.true.prev.postf1f2)$sample_side
+a_index1$sample_side <- factor(a_index1$sample_side)
+comb <- split(t(combn(levels(a_index1$sample_side), 2)),seq(nrow(t(combn(levels(a_index1$sample_side), 2)))))
+if( !require(ggsignif) ){
+  install.packages(ggsignif)
+}
+library(ggsignif)
+ggplot(a_index1, aes(x = sample_side, y = Fisher)) +
+  # Outliers are removed, because otherwise each data point would be plotted twice; 
+  # as an outlier of boxplot and as a point of dotplot.
+  geom_boxplot(outlier.shape = NA) + 
+  geom_jitter(width = 0.2) + 
+  labs(x = "sample type", title = expression(Diversity[Fisher])) +
+  geom_signif(comparisons = comb, map_signif_level = FALSE) +
+  theme(text = element_text(size = 10))
+
+
+data <- reshape2::melt(a_index1)
+ggplot(data, aes(x = sample_side,y = value)) +
+  # Outliers are removed, because otherwise each data point would be plotted twice; 
+  # as an outlier of boxplot and as a point of dotplot.
+  geom_boxplot(outlier.shape = NA) + 
+  geom_jitter(width = 0.2) + 
+  labs(x = "sample type", title = "alpha diversity for p.true.prev.postf1f2") +
+  geom_signif(comparisons = comb, map_signif_level = FALSE) +
+  theme(text = element_text(size = 10)) +
+  facet_wrap(~ variable, scales = "free_y")
+
+
+a_index2 <- estimate_richness(physeq = otu_table(p.true.postf1f2.perfect), measures = c("Observed","Shannon","Simpson","InvSimpson", "Chao1","ACE","Fisher"))
+a_index2$sample_side <- meta(p.true.postf1f2.perfect)$sample_side
+a_index2$sample_side <- factor(a_index2$sample_side)
+comb <- split(t(combn(levels(a_index2$sample_side), 2)),seq(nrow(t(combn(levels(a_index2$sample_side), 2)))))
+ggplot(a_index2, aes(x = sample_side, y = Shannon)) +
+  # Outliers are removed, because otherwise each data point would be plotted twice; 
+  # as an outlier of boxplot and as a point of dotplot.
+  geom_boxplot(outlier.shape = NA) + 
+  geom_jitter(width = 0.2) + 
+  labs(x = "sample type", title = "Shannon index: p.true.postf1f2.perfect") +
+  geom_signif(comparisons = comb, map_signif_level = FALSE) +
+  theme(text = element_text(size = 10))
+
+
+
+phy_tree = rtree(ntaxa(p.true.prev.postf1f2), rooted=TRUE, tip.label=taxa_names(p.true.prev.postf1f2))
+p.true.prev.postf1f2  <- merge_phyloseq(p.true.prev.postf1f2 , phy_tree)
+
+p.true.prev.postf1f2.mod <- subset_samples(p.true.prev.postf1f2,uniqueID != c("326","327","328","329","330","331","332","333"))
+p.true.prev.postf1f2.mod <- subset_samples(p.true.prev.postf1f2.mod, uniqueID != c("334","335"))
+
+uf_dist = phyloseq::distance(p.true.prev.postf1f2.mod, method="unifrac", weighted=F)
+uf_ordination = ordinate(p.true.prev.postf1f2.mod, method="PCoA", distance=uf_dist)
+
+tumor_count <- meta(p.true.prev.postf1f2.mod) %>%
+  filter(sample_side == "tumor") %>%
+  count(sample_side) %>%
+  pull(n)
+normal_count <- as_tibble(sample_data(p.true.prev.postf1f2.mod)) %>% filter(sample_side == "normal") %>% count(sample_side) %>% pull(n)
+
+pcoa1 <- paste("PCoA 1", " [", round(uf_ordination[[3]]$Relative_eig[1], digits = 3)*100, "%]", sep = "")
+pcoa2 <- paste("PCoA 2", " [", round(uf_ordination[[3]]$Relative_eig[2], digits = 3)*100, "%]", sep = "")
+
+set.seed(40)
+p.adonis <- adonis2(uf_dist ~ sample_data(p.true.prev.postf1f2.mod)$sample_side)
+
+p <- case_when(
+  p.adonis$`Pr(>F)`[1] > 0.05 ~ "n.s.",
+  p.adonis$`Pr(>F)`[1] < 0.05 &  p.adonis$`Pr(>F)`[1] > 0.01 ~ paste(p.adonis$`Pr(>F)`[1], "*", sep = " "),
+  p.adonis$`Pr(>F)`[1] <= 0.01 & p.adonis$`Pr(>F)`[1] > 0.001  ~ paste(p.adonis$`Pr(>F)`[1], "**", sep = " "),
+  p.adonis$`Pr(>F)`[1] <= 0.001 ~ paste(p.adonis$`Pr(>F)`[1], "***", sep = " "),
+)
+annotations <- data.frame(
+        xpos = c(-Inf),
+        ypos =  c(Inf),
+        annotateText = p,
+        hjustvar = c(-0.2) ,
+        vjustvar = c(1.5))
+
+plot_ordination(p.true.prev.postf1f2.mod, uf_ordination, color="sample_side") +
+  geom_point(aes(colour=sample_side), size=3) +
+  theme(aspect.ratio=1) +
+  theme_bw()+
+ scale_color_brewer(palette = "Set1", labels=c(paste("Tumor samples\nn =", tumor_count, sep = " "), paste("Normal samples\nn =", normal_count, sep = " ")))+
+  stat_ellipse() +
+  # xlab(pcoa1)+
+  # ylab(pcoa2)+
+  theme(panel.grid =  element_blank())+
+  ggtitle("Differences Normal and Tumor - Unweighted UF - Not rarified") +
+  theme (axis.text=element_text(size=14),
+         axis.title=element_text(size=16,face="bold"))+
+  theme(
+        # legend.justification=c(1.15,-0.15), legend.position=c(1,0),
+        legend.text = element_text(size = 12),
+        legend.title = element_blank())+
+  geom_text(data=annotations,aes(x=xpos,y=ypos,hjust=hjustvar,vjust=vjustvar,label=annotateText), inherit.aes = FALSE)
+
+
+bray_dist = phyloseq::distance(p.true.prev.postf1f2, method="bray")
+bc_ordination = ordinate(p.true.prev.postf1f2, method="PCoA", distance=bray_dist)
+
+tumor_count <- as_tibble(sample_data(p.true.prev.postf1f2)) %>% filter(sample_side == "tumor") %>% count(sample_side) %>% pull(n)
+normal_count <- as_tibble(sample_data(p.true.prev.postf1f2)) %>% filter(sample_side == "normal") %>% count(sample_side) %>% pull(n)
+
+pcoa1 <- paste("PCoA 1", " [", round(bc_ordination[[3]]$Relative_eig[1], digits = 3)*100, "%]", sep = "")
+pcoa2 <- paste("PCoA 2", " [", round(bc_ordination[[3]]$Relative_eig[2], digits = 3)*100, "%]", sep = "")
+
+set.seed(40)
+p.adonis <- adonis2(bray_dist ~ sample_data(p.true.prev.postf1f2)$sample_side)
+
+p <- case_when(
+  p.adonis$`Pr(>F)`[1] > 0.05 ~ "n.s.",
+  p.adonis$`Pr(>F)`[1] < 0.05 &  p.adonis$`Pr(>F)`[1] > 0.01 ~ paste(p.adonis$`Pr(>F)`[1], "*", sep = " "),
+  p.adonis$`Pr(>F)`[1] <= 0.01 & p.adonis$`Pr(>F)`[1] > 0.001  ~ paste(p.adonis$`Pr(>F)`[1], "**", sep = " "),
+  p.adonis$`Pr(>F)`[1] <= 0.001 ~ paste(p.adonis$`Pr(>F)`[1], "***", sep = " "),
+)
+annotations <- data.frame(
+        xpos = c(-Inf),
+        ypos =  c(Inf),
+        annotateText = p,
+        hjustvar = c(-0.2) ,
+        vjustvar = c(1.5))
+
+plot_ordination(p.true.prev.postf1f2, bc_ordination, color="sample_side") +
+  geom_point(aes(colour=sample_side), size=3) +
+  theme(aspect.ratio=1) +
+  theme_bw()+
+ scale_color_brewer(palette = "Set1", labels=c(paste("Tumor samples\nn =", tumor_count, sep = " "), paste("Normal samples\nn =", normal_count, sep = " ")))+
+  stat_ellipse() +
+  xlab(pcoa1)+
+  ylab(pcoa2)+
+  theme(panel.grid =  element_blank())+
+  ggtitle("Differences Normal and Tumor - Bray curtis - Not rarified") +
+  theme (axis.text=element_text(size=14),
+         axis.title=element_text(size=16,face="bold"))+
+  theme(
+        # legend.justification=c(1.15,-0.15), legend.position=c(1,0),
+        legend.text = element_text(size = 12),
+        legend.title = element_blank())+
+  geom_text(data=annotations,aes(x=xpos,y=ypos,hjust=hjustvar,vjust=vjustvar,label=annotateText), inherit.aes = FALSE)
+
+# rarified samples
+
+sample.size <- 1000
+seed <- 711
+p.true.prev.postf1f22 <- rarefy_even_depth(physeq = p.true.prev.postf1f2, sample.size = sample.size, rngseed = seed)
+
+true_count <- as_tibble(sample_data(p.true.prev.postf1f22)) %>% filter(TRUE_control == "TRUE") %>% count(TRUE_control) %>% pull(n)
+control_count <- as_tibble(sample_data(p.true.prev.postf1f22)) %>% filter(TRUE_control == "control") %>% count(TRUE_control) %>% pull(n)
+
+bray_dist = phyloseq::distance(p.true.prev.postf1f22, method="bray")
+bc_ordination = ordinate(p.true.prev.postf1f22, method="PCoA", distance=bray_dist)
+
+pcoa1 <- paste("PCoA 1", " [", round(bc_ordination[[3]]$Relative_eig[1], digits = 3)*100, "%]", sep = "")
+pcoa2 <- paste("PCoA 2", " [", round(bc_ordination[[3]]$Relative_eig[2], digits = 3)*100, "%]", sep = "")
+
+set.seed(40)
+p.adonis <- adonis2(bray_dist ~ sample_data(p.true.prev.postf1f22)$TRUE_control)
+
+p <- case_when(
+  p.adonis$`Pr(>F)`[1] > 0.05 ~ "n.s.",
+  p.adonis$`Pr(>F)`[1] < 0.05 &  p.adonis$`Pr(>F)`[1] > 0.01 ~ paste(p.adonis$`Pr(>F)`[1], "*", sep = " "),
+  p.adonis$`Pr(>F)`[1] <= 0.01 & p.adonis$`Pr(>F)`[1] > 0.001  ~ paste(p.adonis$`Pr(>F)`[1], "**", sep = " "),
+  p.adonis$`Pr(>F)`[1] <= 0.001 ~ paste(p.adonis$`Pr(>F)`[1], "***", sep = " "),
+)
+annotations <- data.frame(
+        xpos = c(-Inf),
+        ypos =  c(Inf),
+        annotateText = p,
+        hjustvar = c(-0.2) ,
+        vjustvar = c(1.5))
+
+plot_ordination(p.true.prev.postf1f22, bc_ordination, color="TRUE_control") + 
+  geom_point(aes(colour=TRUE_control), size=3) +
+  theme(aspect.ratio=1) +
+  theme_bw()+
+scale_color_brewer(palette = "Set1", labels=c(paste("Tissue samples\nn =", true_count, sep = " "), paste("Negative controls\nn =", control_count, sep = " ")))+
+  stat_ellipse() +
+  xlab(pcoa1)+
+  ylab(pcoa2)+
+  theme(panel.grid =  element_blank())+
+  ggtitle("Differences Negative controls and True samples - Bray curtis - Rarified") +
+  theme (axis.text=element_text(size=14),
+         axis.title=element_text(size=16,face="bold"))+
+  theme(
+        # legend.justification=c(1.15,-0.15), legend.position=c(1,0),
+        legend.text = element_text(size = 12),
+        legend.title = element_blank())+
+  geom_text(data=annotations,aes(x=xpos,y=ypos,hjust=hjustvar,vjust=vjustvar,label=annotateText), inherit.aes = FALSE)
+
+
+
+uf_dist = phyloseq::distance(p.true.prev.postf1f22, method="unifrac", weighted=F)
+uf_ordination = ordinate(p.true.prev.postf1f22, method="PCoA", distance=uf_dist)
+
+true_count <- as_tibble(sample_data(p.true.prev.postf1f2)) %>% filter(TRUE_control == "TRUE") %>% count(TRUE_control) %>% pull(n)
+control_count <- as_tibble(sample_data(p.true.prev.postf1f2)) %>% filter(TRUE_control == "control") %>% count(TRUE_control) %>% pull(n)
+
+pcoa1 <- paste("PCoA 1", " [", round(uf_ordination[[3]]$Relative_eig[1], digits = 3)*100, "%]", sep = "")
+pcoa2 <- paste("PCoA 2", " [", round(uf_ordination[[3]]$Relative_eig[2], digits = 3)*100, "%]", sep = "")
+
+set.seed(40)
+p.adonis <- adonis2(uf_dist ~ sample_data(p.true.prev.postf1f22)$TRUE_control)
+
+p <- case_when(
+  p.adonis$`Pr(>F)`[1] > 0.05 ~ "n.s.",
+  p.adonis$`Pr(>F)`[1] < 0.05 &  p.adonis$`Pr(>F)`[1] > 0.01 ~ paste(p.adonis$`Pr(>F)`[1], "*", sep = " "),
+  p.adonis$`Pr(>F)`[1] <= 0.01 & p.adonis$`Pr(>F)`[1] > 0.001  ~ paste(p.adonis$`Pr(>F)`[1], "**", sep = " "),
+  p.adonis$`Pr(>F)`[1] <= 0.001 ~ paste(p.adonis$`Pr(>F)`[1], "***", sep = " "),
+)
+annotations <- data.frame(
+        xpos = c(-Inf),
+        ypos =  c(Inf),
+        annotateText = p,
+        hjustvar = c(-0.2) ,
+        vjustvar = c(1.5))
+
+plot_ordination(p.true.prev.postf1f22, uf_ordination, color="TRUE_control") + 
+  geom_point(aes(colour=TRUE_control), size=3) +
+  theme(aspect.ratio=1) +
+  theme_bw()+
+ scale_color_brewer(palette = "Set1", labels=c(paste("Tissue samples\nn =", true_count, sep = " "), paste("Negative controls\nn =", control_count, sep = " ")))+
+  stat_ellipse() +
+  xlab(pcoa1)+
+  ylab(pcoa2)+
+  theme(panel.grid =  element_blank())+
+  ggtitle("Differences Negative controls and True samples - Unweighted UF - Rarified") +
+  theme (axis.text=element_text(size=14),
+         axis.title=element_text(size=16,face="bold"))+
+  theme(
+        # legend.justification=c(1.15,-0.15), legend.position=c(1,0),
+        legend.text = element_text(size = 12),
+        legend.title = element_blank())+
+  geom_text(data=annotations,aes(x=xpos,y=ypos,hjust=hjustvar,vjust=vjustvar,label=annotateText), inherit.aes = FALSE)
+```
+
+
+binom.test(2,10,0.08,alternative = "two.sided")
+
+# testing binominal for taxa not prevalent in buffer
+
+
+rp <- subset_taxa(p.comb.paraffin, species == "Sphingosinithalassobacter sp.")
+otu_table(rp)
+
+rp.ntc <- subset_samples(rp, sample_side == "paraffin_tumor" | sample_side == "paraffin_normal")
+rp.true <- subset_samples(rp, TRUE_control == "TRUE")
+
+x2 <- prevalence(rp.true, detection = 0, count = TRUE)
+
+n2 <- nrow(meta(rp.true))
+
+
+p2 <- prevalence(rp.ntc, detection = 0, count = TRUE)/nrow(meta(rp.ntc))
+
+binom.test(x2, n2, p2)
+# 
+# write.xlsx(meta(physeq.filt.combined), "metadata.xlsx")
+```
+
+https://www.statology.org/binomial-test-r/
