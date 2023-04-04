@@ -78,13 +78,13 @@ source("CP/Code/MyAnalysisWithPlots.R")
 
 ### Loading true samples
 ```{r}
-physeq1.1500.80 <- readRDS("PDA/raw_data/PhyloSeqObj/2022_05_27_patho_FFPE_tum_panc_1/physeq_original_1500.80.rds")
-physeq2.1500.80 <- readRDS("PDA/raw_data/PhyloSeqObj/2022_05_27_patho_FFPE_tum_panc_2/physeq_original_1500.80.rds")
-physeq3.1500.80 <- readRDS("PDA/raw_data/PhyloSeqObj/2022_05_28_patho_FFPE_tum_panc_3/physeq_original_1500.80.rds")
-physeq4.1500.80 <- readRDS("PDA/raw_data/PhyloSeqObj/2022_05_28_patho_FFPE_tum_panc_4/physeq_original_1500.80.rds")
+physeq1.1500.80 <- readRDS("PDAC/raw_data/PhyloSeqObj/2022_05_27_patho_FFPE_tum_panc_1/physeq_original_1500.80.rds")
+physeq2.1500.80 <- readRDS("PDAC/raw_data/PhyloSeqObj/2022_05_27_patho_FFPE_tum_panc_2/physeq_original_1500.80.rds")
+physeq3.1500.80 <- readRDS("PDAC/raw_data/PhyloSeqObj/2022_05_28_patho_FFPE_tum_panc_3/physeq_original_1500.80.rds")
+physeq4.1500.80 <- readRDS("PDAC/raw_data/PhyloSeqObj/2022_05_28_patho_FFPE_tum_panc_4/physeq_original_1500.80.rds")
 #physeq5.1500.80 <- readRDS("PDA/raw_data/PhyloSeqObj/2021_12_01_patho_FFPE_self_tumor/physeq_original_1500.80.rds")
-physeq6.1500.80 <- readRDS("PDA/raw_data/PhyloSeqObj/2022_08_09_patho_FFPE_tum_panc_rep1/physeq_original_1500.80.rds") #09.08.22: rep1: 10 samples (tumor+normal panc mixed)
-physeq7.1500.80 <- readRDS("PDA/raw_data/PhyloSeqObj/2022_08_09_patho_FFPE_tum_panc_rep2/physeq_original_1500.80.rds") #09.08.22: rep2: 10 samples (tumor+normal panc mixed)
+physeq6.1500.80 <- readRDS("PDAC/raw_data/PhyloSeqObj/2022_08_09_patho_FFPE_tum_panc_rep1/physeq_original_1500.80.rds") #09.08.22: rep1: 10 samples (tumor+normal panc mixed)
+physeq7.1500.80 <- readRDS("PDAC/raw_data/PhyloSeqObj/2022_08_09_patho_FFPE_tum_panc_rep2/physeq_original_1500.80.rds") #09.08.22: rep2: 10 samples (tumor+normal panc mixed)
 #merge the different phyloseq objects into 1 phyloseq object
 p.true.original <- merge_phyloseq(physeq1.1500.80,physeq2.1500.80,physeq3.1500.80,physeq4.1500.80,physeq6.1500.80,physeq7.1500.80)
 #clean objects
@@ -98,17 +98,17 @@ Now in true samples, we have:
 
 ### Loading NCTs
 ```{r}
-physeq.nct1.1500.80 <- readRDS("PDA/raw_data/PhyloSeqObj/2022_06_02_patho_FFPE_tum_panc_ntc_1/physeq_original_1500.80.rds")
-physeq.nct2.1500.80 <- readRDS("PDA/raw_data/PhyloSeqObj/2022_06_02_patho_FFPE_tum_panc_ntc_2/physeq_original_1500.80.rds")
-physeq.nct3.1500.80 <- readRDS("PDA/raw_data/PhyloSeqObj/2022_06_03_patho_FFPE_tum_panc_ntc_3/physeq_original_1500.80.rds")
-physeq.nct4.1500.80 <- readRDS("PDA/raw_data/PhyloSeqObj/2022_06_03_patho_FFPE_tum_panc_ntc_4/physeq_original_1500.80.rds")
-physeq.nct5.1500.80 <- readRDS("PDA/raw_data/PhyloSeqObj/2022_06_04_patho_FFPE_tum_panc_ntc_5/physeq_original_1500.80.rds")
-physeq.nct6.1500.80 <- readRDS("PDA/raw_data/PhyloSeqObj/2022_06_04_patho_FFPE_tum_panc_ntc_6/physeq_original_1500.80.rds")
-physeq.nct7.1500.80 <- readRDS("PDA/raw_data/PhyloSeqObj/2022_06_10_patho_FFPE_tum_panc_ntc_7/physeq_original_1500.80.rds")
-physeq.nct8.1500.80 <- readRDS("PDA/raw_data/PhyloSeqObj/2022_07_13_patho_FFPE_tum_panc_ntc_8/physeq_original_1500.80.rds")
-physeq.nct9.1500.80 <- readRDS("PDA/raw_data/PhyloSeqObj/2022_07_13_patho_FFPE_tum_panc_ntc_9/physeq_original_1500.80.rds")
-physeq.nct10.1500.80 <- readRDS("PDA/raw_data/PhyloSeqObj/2021_12_02_patho_FFPE_self_ntc/physeq_original_1500.80.rds")
-physeq.nct11.1500.80 <- readRDS("PDA/raw_data/PhyloSeqObj/2022_01_24_patho_FFPE_self_ntc_2/physeq_original_1500.80.rds")
+physeq.nct1.1500.80 <- readRDS("PDAC/raw_data/PhyloSeqObj/2022_06_02_patho_FFPE_tum_panc_ntc_1/physeq_original_1500.80.rds")
+physeq.nct2.1500.80 <- readRDS("PDAC/raw_data/PhyloSeqObj/2022_06_02_patho_FFPE_tum_panc_ntc_2/physeq_original_1500.80.rds")
+physeq.nct3.1500.80 <- readRDS("PDAC/raw_data/PhyloSeqObj/2022_06_03_patho_FFPE_tum_panc_ntc_3/physeq_original_1500.80.rds")
+physeq.nct4.1500.80 <- readRDS("PDAC/raw_data/PhyloSeqObj/2022_06_03_patho_FFPE_tum_panc_ntc_4/physeq_original_1500.80.rds")
+physeq.nct5.1500.80 <- readRDS("PDAC/raw_data/PhyloSeqObj/2022_06_04_patho_FFPE_tum_panc_ntc_5/physeq_original_1500.80.rds")
+physeq.nct6.1500.80 <- readRDS("PDAC/raw_data/PhyloSeqObj/2022_06_04_patho_FFPE_tum_panc_ntc_6/physeq_original_1500.80.rds")
+physeq.nct7.1500.80 <- readRDS("PDAC/raw_data/PhyloSeqObj/2022_06_10_patho_FFPE_tum_panc_ntc_7/physeq_original_1500.80.rds")
+physeq.nct8.1500.80 <- readRDS("PDAC/raw_data/PhyloSeqObj/2022_07_13_patho_FFPE_tum_panc_ntc_8/physeq_original_1500.80.rds")
+physeq.nct9.1500.80 <- readRDS("PDAC/raw_data/PhyloSeqObj/2022_07_13_patho_FFPE_tum_panc_ntc_9/physeq_original_1500.80.rds")
+physeq.nct10.1500.80 <- readRDS("PDAC/raw_data/PhyloSeqObj/2021_12_02_patho_FFPE_self_ntc/physeq_original_1500.80.rds")
+physeq.nct11.1500.80 <- readRDS("PDAC/raw_data/PhyloSeqObj/2022_01_24_patho_FFPE_self_ntc_2/physeq_original_1500.80.rds")
 #merge the different phyloseq objects into 1 phyloseq object
 physeq.nct.original <- merge_phyloseq(physeq.nct1.1500.80, physeq.nct2.1500.80, physeq.nct3.1500.80, physeq.nct4.1500.80, physeq.nct5.1500.80, physeq.nct6.1500.80, physeq.nct7.1500.80, physeq.nct8.1500.80, physeq.nct9.1500.80,physeq.nct10.1500.80, physeq.nct11.1500.80)
 #clean objects
@@ -322,7 +322,7 @@ We need metadata information to proceed
 ```{r}
 # load metadata
 library("readxl")
-metadata <- read_excel("PDA/raw_data/Metadata_2.xlsx") %>% as.data.frame()
+metadata <- read_excel("PDAC/raw_data/Metadata_2.xlsx") %>% as.data.frame()
 metadata <- metadata[,c("uniqueID", "sample_side", "sample_nr", "TRUE_control", "DNAex_round", "PCR_round")]
 metadata <- metadata %>% mutate(PCR_round = as.character(PCR_round))
 head(metadata)

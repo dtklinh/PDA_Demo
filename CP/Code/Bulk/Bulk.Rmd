@@ -62,8 +62,8 @@ sessionInfo()
 
 ```{r}
 ## adding functions
-source("CP/Code/MyFunctionsV2.R")
-source("CP/Code/MyAnalysisWithPlots.R")
+source("./CP/Code/MyFunctionsV2.R")
+source("./CP/Code/MyAnalysisWithPlots.R")
 ```
 
 # Raw data
@@ -186,6 +186,7 @@ p.true.filt.s
 alpha_analysis(p.true.filt.s,i = "sample_side")
 beta_analysis_bray(Phyloseq = p.true.filt.s)
 ```
+
 
 Before using tissue data for further downstream analysis, we firstly need to apply QC (quality control). We remove samples from our tissue set whose read counts are below a given threshold. The respective read counts are too low and do not yield confident presence/absence calls. 
 
@@ -430,6 +431,15 @@ alpha_analysis(p.comb.filt.s,i = "TRUE_control")
 beta_analysis_bray(p.comb.filt.s,i = "TRUE_control")
 ```
 
+```{r}
+bray_dist <- phyloseq::distance(p.comb.filt.s, method="bray")
+bc_ordination <- ordinate(p.comb.filt.s,method = "PCoA",distance = bray_dist)
+plot_ordination(physeq = p.comb.filt.s,ordination = bc_ordination ,color = "TRUE_control", label = "uniqueID") + stat_ellipse()
+
+
+plot_ordination(p.comb.filt.s,ordination = bc_ordination,type = "species",color = "phylum") + stat_ellipse()
+```
+
 ## DEMERGE!
 ```{r}
 p.true.filt.s.unify <- subset_samples(p.comb.filt.s,TRUE_control=="TRUE") #only true samples
@@ -585,6 +595,17 @@ p.true.RmLowAbun.RmHLPrev.man <- subset_samples(physeq = p.true.RmLowAbun.RmHLPr
 alpha_analysis(p.true.RmLowAbun.RmHLPrev.man,i = "sample_side")
 beta_analysis_bray(p.true.RmLowAbun.RmHLPrev.man)
 ```
+
+
+```{r}
+bray_dist <- phyloseq::distance(p.true.RmLowAbun.RmHLPrev.man, method="bray")
+bc_ordination <- ordinate(p.true.RmLowAbun.RmHLPrev.man,method = "PCoA",distance = bray_dist)
+plot_ordination(physeq = p.true.RmLowAbun.RmHLPrev.man,ordination = bc_ordination ,color = "sample_side", label = "uniqueID") + stat_ellipse()
+
+
+plot_ordination(p.true.RmLowAbun.RmHLPrev.man,ordination = bc_ordination,type = "species",color = "phylum") + stat_ellipse()
+```
+
 
 #Prevalence
 ```{r}
